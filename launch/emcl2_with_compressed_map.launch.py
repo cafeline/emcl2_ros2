@@ -16,7 +16,7 @@ def generate_launch_description():
     declare_map_yaml = DeclareLaunchArgument(
         'map',
         default_value=os.path.join(
-            get_package_share_directory('binary_image_compressor'), 'map', 'mile1_2_50.yaml'),
+            get_package_share_directory('binary_image_compressor'), 'map', 'turtlebot3_world.yaml'),
         description='Full path to map yaml file to load')
     declare_use_sim_time = DeclareLaunchArgument(
         'use_sim_time',
