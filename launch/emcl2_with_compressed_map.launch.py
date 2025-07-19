@@ -13,10 +13,14 @@ def generate_launch_description():
     map_yaml_file = LaunchConfiguration('map')
     use_sim_time = LaunchConfiguration('use_sim_time')
 
+    # パッケージディレクトリを取得
+    binary_image_compressor_dir = get_package_share_directory('binary_image_compressor')
+    emcl2_dir = get_package_share_directory('emcl2')
+    
     declare_map_yaml = DeclareLaunchArgument(
         'map',
         default_value=os.path.join(
-            get_package_share_directory('binary_image_compressor'), 'map', 'turtlebot3_world.yaml'),
+            binary_image_compressor_dir, 'map', 'map_tsudanuma.yaml'),
         description='Full path to map yaml file to load')
     declare_use_sim_time = DeclareLaunchArgument(
         'use_sim_time',
@@ -26,13 +30,11 @@ def generate_launch_description():
         'params_file',
         default_value=[
             TextSubstitution(text=os.path.join(
-                get_package_share_directory('emcl2'), 'config', '')),
+                emcl2_dir, 'config', '')),
             TextSubstitution(text='emcl2.param.yaml')],
         description='emcl2 param file path')
 
-    # パッケージディレクトリを取得
-    binary_image_compressor_dir = get_package_share_directory('binary_image_compressor')
-    emcl2_dir = get_package_share_directory('emcl2')
+
 
     # パラメータファイルのパスを設定
     compressor_param_file = os.path.join(binary_image_compressor_dir, 'config', 'compressor_params.yaml')
@@ -45,19 +47,19 @@ def generate_launch_description():
         print(f"警告: EMCL2のパラメータファイルが見つかりません: {emcl2_param_file}")
 
     # ライフサイクル管理対象のノード
-    lifecycle_nodes = ['map_server']
+    # lifecycle_nodes = ['map_server']
 
     launch_node = GroupAction(
         actions=[
             SetParameter('use_sim_time', use_sim_time),
 
             # Map Server
-            Node(
-                package='nav2_map_server',
-                executable='map_server',
-                name='map_server',
-                parameters=[{'yaml_filename': map_yaml_file}],
-                output='screen'),
+            # Node(
+            #     package='nav2_map_server',
+            #     executable='map_server',
+            #     name='map_server',
+            #     parameters=[{'yaml_filename': map_yaml_file}],
+            #     output='screen'),
 
             # EMCL2ノード
             Node(
@@ -77,13 +79,13 @@ def generate_launch_description():
             ),
 
             # Lifecycle Manager
-            Node(
-                package='nav2_lifecycle_manager',
-                executable='lifecycle_manager',
-                name='lifecycle_manager_localization',
-                output='screen',
-                parameters=[{'autostart': True},
-                            {'node_names': lifecycle_nodes}])
+            # Node(
+            #     package='nav2_lifecycle_manager',
+            #     executable='lifecycle_manager',
+            #     name='lifecycle_manager_localization',
+            #     output='screen',
+            #     parameters=[{'autostart': True},
+            #                 {'node_names': lifecycle_nodes}])
         ]
     )
 
