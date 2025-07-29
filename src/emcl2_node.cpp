@@ -292,12 +292,12 @@ void EMcl2Node::loop(void)
 			timing_measurements_.reserve(1000);
 			RCLCPP_INFO(get_logger(), "自己位置推定時間計測を開始します");
 		}
+		double x_var, y_var, t_var, xy_cov, yt_cov, tx_cov;
 
 		// 計測実行
 		if (timing_started_ && measurement_count_ < 1000) {
 			auto measure_start = std::chrono::high_resolution_clock::now();
 			pf_->sensorUpdate(lx, ly, lt, inv);
-			double x_var, y_var, t_var, xy_cov, yt_cov, tx_cov;
 			pf_->meanPose(x, y, t, x_var, y_var, t_var, xy_cov, yt_cov, tx_cov);
 			auto measure_end = std::chrono::high_resolution_clock::now();
 
