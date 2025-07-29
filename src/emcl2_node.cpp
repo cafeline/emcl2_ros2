@@ -26,6 +26,9 @@
 #include <memory>
 #include <type_traits>
 #include <utility>
+#include <chrono>
+#include <numeric>
+#include <vector>
 
 namespace emcl2
 {
@@ -36,7 +39,10 @@ EMcl2Node::EMcl2Node()
   init_request_(false),
   simple_reset_request_(false),
   scan_receive_(false),
-  map_receive_(false)
+  map_receive_(false),
+  start_time_(std::chrono::steady_clock::now()),
+  timing_started_(false),
+  measurement_count_(0)
 {
 	// declare ros parameters
 	declareParameter();
@@ -182,7 +188,7 @@ void EMcl2Node::receiveMap(const nav_msgs::msg::OccupancyGrid::ConstSharedPtr ms
 {
 	map_ = *msg;
 	map_receive_ = true;
-	RCLCPP_INFO(get_logger(), "Received map.");
+	// RCLCPP_INFO(get_logger(), "Received map.");
 	initPF();
 	initTF();
 }
@@ -200,7 +206,7 @@ void EMcl2Node::cbScan(const sensor_msgs::msg::LaserScan::ConstSharedPtr msg)
 void EMcl2Node::initialPoseReceived(
   const geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr msg)
 {
-	RCLCPP_INFO(get_logger(), "Run receiveInitialPose");
+	// RCLCPP_INFO(get_logger(), "Run receiveInitialPose");
 	if (!initialpose_receive_) {
 		if (scan_receive_ && map_receive_) {
 			init_x_ = msg->pose.pose.position.x;
@@ -210,14 +216,14 @@ void EMcl2Node::initialPoseReceived(
 			initialpose_receive_ = true;
 		} else {
 			if (!scan_receive_) {
-				RCLCPP_WARN(
-				  get_logger(),
-				  "Not yet received scan. Therefore, MCL cannot be initiated.");
+				// RCLCPP_WARN(
+				//   get_logger(),
+				//   "Not yet received scan. Therefore, MCL cannot be initiated.");
 			}
 			if (!map_receive_) {
-				RCLCPP_WARN(
-				  get_logger(),
-				  "Not yet received map. Therefore, MCL cannot be initiated.");
+				// RCLCPP_WARN(
+				//   get_logger(),
+				//   "Not yet received map. Therefore, MCL cannot be initiated.");
 			}
 		}
 	} else {
@@ -241,7 +247,7 @@ void EMcl2Node::loop(void)
 	if (init_pf_) {
 		double x, y, t;
 		if (!getOdomPose(x, y, t)) {
-			RCLCPP_INFO(get_logger(), "can't get odometry info");
+			// RCLCPP_INFO(get_logger(), "can't get odometry info");
 			return;
 		}
 		pf_->motionUpdate(x, y, t);
@@ -249,14 +255,45 @@ void EMcl2Node::loop(void)
 		double lx, ly, lt;
 		bool inv;
 		if (!getLidarPose(lx, ly, lt, inv)) {
-			RCLCPP_INFO(get_logger(), "can't get lidar pose info");
+			// RCLCPP_INFO(get_logger(), "can't get lidar pose info");
 			return;
 		}
 
 		pf_->sensorUpdate(lx, ly, lt, inv);
 
 		double x_var, y_var, t_var, xy_cov, yt_cov, tx_cov;
-		pf_->meanPose(x, y, t, x_var, y_var, t_var, xy_cov, yt_cov, tx_cov);
+		
+		// 計測開始チェック（起動から10秒後）
+		auto current_time = std::chrono::steady_clock::now();
+		auto elapsed_time = std::chrono::duration_cast<std::chrono::seconds>(current_time - start_time_).count();
+		
+		if (elapsed_time >= 10 && !timing_started_) {
+			timing_started_ = true;
+			timing_measurements_.reserve(1000);
+			RCLCPP_INFO(get_logger(), "自己位置推定時間計測を開始します");
+		}
+		
+		// 計測実行
+		if (timing_started_ && measurement_count_ < 1000) {
+			auto measure_start = std::chrono::high_resolution_clock::now();
+			pf_->meanPose(x, y, t, x_var, y_var, t_var, xy_cov, yt_cov, tx_cov);
+			auto measure_end = std::chrono::high_resolution_clock::now();
+			
+			auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+				measure_end - measure_start).count();
+			timing_measurements_.push_back(static_cast<double>(duration));
+			measurement_count_++;
+			
+			// 1000回計測完了時に平均値を出力
+			if (measurement_count_ == 1000) {
+				double average_time = std::accumulate(timing_measurements_.begin(), 
+					timing_measurements_.end(), 0.0) / timing_measurements_.size();
+				RCLCPP_INFO(get_logger(), "自己位置推定時間計測完了 (1000回平均): %.2f マイクロ秒 (%.4f ミリ秒)", 
+					average_time, average_time / 1000.0);
+			}
+		} else {
+			pf_->meanPose(x, y, t, x_var, y_var, t_var, xy_cov, yt_cov, tx_cov);
+		}
 
 		publishOdomFrame(x, y, t);
 		publishPose(x, y, t, x_var, y_var, t_var, xy_cov, yt_cov, tx_cov);
@@ -267,14 +304,14 @@ void EMcl2Node::loop(void)
 		alpha_pub_->publish(alpha_msg);
 	} else {
 		if (!scan_receive_) {
-			RCLCPP_WARN(
-			  get_logger(),
-			  "Not yet received scan. Therefore, MCL cannot be initiated.");
+			// RCLCPP_WARN(
+			//   get_logger(),
+			//   "Not yet received scan. Therefore, MCL cannot be initiated.");
 		}
 		if (!map_receive_) {
-			RCLCPP_WARN(
-			  get_logger(),
-			  "Not yet received map. Therefore, MCL cannot be initiated.");
+			// RCLCPP_WARN(
+			//   get_logger(),
+			//   "Not yet received map. Therefore, MCL cannot be initiated.");
 		}
 	}
 }
@@ -320,7 +357,7 @@ void EMcl2Node::publishOdomFrame(double x, double y, double t)
 
 		tf_->transform(tmp_tf_stamped, odom_to_map, odom_frame_id_);
 	} catch (tf2::TransformException & e) {
-		RCLCPP_DEBUG(get_logger(), "Failed to subtract base to odom transform");
+		// RCLCPP_DEBUG(get_logger(), "Failed to subtract base to odom transform");
 		return;
 	}
 	tf2::convert(odom_to_map.pose, latest_tf_);
@@ -366,8 +403,8 @@ bool EMcl2Node::getOdomPose(double & x, double & y, double & yaw)
 	try {
 		this->tf_->transform(ident, odom_pose, odom_frame_id_);
 	} catch (tf2::TransformException & e) {
-		RCLCPP_WARN(
-		  get_logger(), "Failed to compute odom pose, skipping scan (%s)", e.what());
+		// RCLCPP_WARN(
+		//   get_logger(), "Failed to compute odom pose, skipping scan (%s)", e.what());
 		return false;
 	}
 	x = odom_pose.pose.position.x;
@@ -388,8 +425,8 @@ bool EMcl2Node::getLidarPose(double & x, double & y, double & yaw, bool & inv)
 	try {
 		this->tf_->transform(ident, lidar_pose, base_frame_id_);
 	} catch (tf2::TransformException & e) {
-		RCLCPP_WARN(
-		  get_logger(), "Failed to compute lidar pose, skipping scan (%s)", e.what());
+		// RCLCPP_WARN(
+		//   get_logger(), "Failed to compute lidar pose, skipping scan (%s)", e.what());
 		return false;
 	}
 
