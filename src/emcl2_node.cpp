@@ -259,36 +259,34 @@ void EMcl2Node::loop(void)
 			return;
 		}
 
-		pf_->sensorUpdate(lx, ly, lt, inv);
-
-		double x_var, y_var, t_var, xy_cov, yt_cov, tx_cov;
-		
 		// 計測開始チェック（起動から10秒後）
 		auto current_time = std::chrono::steady_clock::now();
 		auto elapsed_time = std::chrono::duration_cast<std::chrono::seconds>(current_time - start_time_).count();
-		
+
 		if (elapsed_time >= 10 && !timing_started_) {
 			timing_started_ = true;
 			timing_measurements_.reserve(1000);
 			RCLCPP_INFO(get_logger(), "自己位置推定時間計測を開始します");
 		}
-		
+
 		// 計測実行
 		if (timing_started_ && measurement_count_ < 1000) {
 			auto measure_start = std::chrono::high_resolution_clock::now();
+			pf_->sensorUpdate(lx, ly, lt, inv);
+			double x_var, y_var, t_var, xy_cov, yt_cov, tx_cov;
 			pf_->meanPose(x, y, t, x_var, y_var, t_var, xy_cov, yt_cov, tx_cov);
 			auto measure_end = std::chrono::high_resolution_clock::now();
-			
+
 			auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
 				measure_end - measure_start).count();
 			timing_measurements_.push_back(static_cast<double>(duration));
 			measurement_count_++;
-			
+
 			// 1000回計測完了時に平均値を出力
 			if (measurement_count_ == 1000) {
-				double average_time = std::accumulate(timing_measurements_.begin(), 
+				double average_time = std::accumulate(timing_measurements_.begin(),
 					timing_measurements_.end(), 0.0) / timing_measurements_.size();
-				RCLCPP_INFO(get_logger(), "自己位置推定時間計測完了 (1000回平均): %.2f マイクロ秒 (%.4f ミリ秒)", 
+				RCLCPP_INFO(get_logger(), "自己位置推定時間計測完了 (1000回平均): %.2f マイクロ秒 (%.4f ミリ秒)",
 					average_time, average_time / 1000.0);
 			}
 		} else {
