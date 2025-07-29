@@ -31,6 +31,9 @@
 
 #include <memory>
 #include <string>
+#include <chrono>
+#include <numeric>
+#include <vector>
 
 namespace emcl2
 {
@@ -86,6 +89,11 @@ class EMcl2Node : public rclcpp::Node
 	bool compressed_data_ready_;
 	double init_x_, init_y_, init_t_;
 	double transform_tolerance_;
+	
+	std::chrono::steady_clock::time_point start_time_;
+	std::vector<double> timing_measurements_;
+	bool timing_started_;
+	int measurement_count_;
 
 	void publishPose(
 	  double x, double y, double t, double x_dev, double y_dev, double t_dev, double xy_cov,

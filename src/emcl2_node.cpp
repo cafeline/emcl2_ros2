@@ -30,6 +30,9 @@
 #include <memory>
 #include <type_traits>
 #include <utility>
+#include <chrono>
+#include <numeric>
+#include <vector>
 
 namespace emcl2
 {
@@ -41,7 +44,10 @@ EMcl2Node::EMcl2Node()
   simple_reset_request_(false),
   scan_receive_(false),
   map_receive_(false),
-  compressed_data_ready_(false)
+  compressed_data_ready_(false),
+  start_time_(std::chrono::steady_clock::now()),
+  timing_started_(false),
+  measurement_count_(0)
 {
 	// declare ros parameters
 	declareParameter();
@@ -187,17 +193,17 @@ std::shared_ptr<OdomModel> EMcl2Node::initOdometry(void)
 std::shared_ptr<CompressedMap> EMcl2Node::initMap(void)
 {
 	if (compressed_data_ready_) {
-		RCLCPP_INFO(get_logger(), "Initializing map with compressed map data.");
+		// RCLCPP_INFO(get_logger(), "Initializing map with compressed map data.");
 		// 圧縮地図を作成して直接返す
 		auto compressed_map = std::make_shared<CompressedMap>(
 		  compressed_map_info_, block_size_, patterns_, block_indices_);
-		RCLCPP_INFO(
-		  get_logger(),
-		  "Using compressed map directly without likelihood field generation.");
+		// RCLCPP_INFO(
+		//   get_logger(),
+		//   "Using compressed map directly without likelihood field generation.");
 		return compressed_map;
 	} else {
-		RCLCPP_ERROR(
-		  get_logger(), "Cannot initialize map: No compressed map data received yet.");
+		// RCLCPP_ERROR(
+		//   get_logger(), "Cannot initialize map: No compressed map data received yet.");
 		return nullptr;
 	}
 }
@@ -215,7 +221,7 @@ void EMcl2Node::cbScan(const sensor_msgs::msg::LaserScan::ConstSharedPtr msg)
 void EMcl2Node::initialPoseReceived(
   const geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr msg)
 {
-	RCLCPP_INFO(get_logger(), "Run receiveInitialPose");
+	// RCLCPP_INFO(get_logger(), "Run receiveInitialPose");
 	if (!initialpose_receive_) {
 		if (scan_receive_ && compressed_data_ready_) {
 			init_x_ = msg->pose.pose.position.x;
@@ -225,15 +231,15 @@ void EMcl2Node::initialPoseReceived(
 			initialpose_receive_ = true;
 		} else {
 			if (!scan_receive_) {
-				RCLCPP_WARN(
-				  get_logger(),
-				  "Not yet received scan. Therefore, MCL cannot be initiated.");
+				// RCLCPP_WARN(
+				//   get_logger(),
+				//   "Not yet received scan. Therefore, MCL cannot be initiated.");
 			}
 			if (!compressed_data_ready_) {
-				RCLCPP_WARN(
-				  get_logger(),
-				  "Not yet received compressed map data. Therefore, MCL cannot be "
-				  "initiated.");
+				// RCLCPP_WARN(
+				//   get_logger(),
+				//   "Not yet received compressed map data. Therefore, MCL cannot be "
+				//   "initiated.");
 			}
 		}
 	} else {
@@ -256,8 +262,8 @@ void EMcl2Node::loop(void)
 
 	// Initialize PF and TF if we have map data but haven't initialized yet
 	if (!init_pf_ && compressed_data_ready_) {
-		RCLCPP_INFO(
-		  get_logger(), "Compressed map data available now. Initializing PF and TF.");
+		// RCLCPP_INFO(
+		//   get_logger(), "Compressed map data available now. Initializing PF and TF.");
 		initPF();
 		initTF();
 	}
@@ -265,7 +271,7 @@ void EMcl2Node::loop(void)
 	if (init_pf_) {
 		double x, y, t;
 		if (!getOdomPose(x, y, t)) {
-			RCLCPP_INFO(get_logger(), "can't get odometry info");
+			// RCLCPP_INFO(get_logger(), "can't get odometry info");
 			return;
 		}
 		pf_->motionUpdate(x, y, t);
@@ -273,14 +279,43 @@ void EMcl2Node::loop(void)
 		double lx, ly, lt;
 		bool inv;
 		if (!getLidarPose(lx, ly, lt, inv)) {
-			RCLCPP_INFO(get_logger(), "can't get lidar pose info");
+			// RCLCPP_INFO(get_logger(), "can't get lidar pose info");
 			return;
 		}
 
-		pf_->sensorUpdate(lx, ly, lt, inv);
+		// 計測開始チェック（起動から10秒後）
+		auto current_time = std::chrono::steady_clock::now();
+		auto elapsed_time = std::chrono::duration_cast<std::chrono::seconds>(current_time - start_time_).count();
 
-		double x_var, y_var, t_var, xy_cov, yt_cov, tx_cov;
-		pf_->meanPose(x, y, t, x_var, y_var, t_var, xy_cov, yt_cov, tx_cov);
+		if (elapsed_time >= 10 && !timing_started_) {
+			timing_started_ = true;
+			timing_measurements_.reserve(1000);
+			RCLCPP_INFO(get_logger(), "自己位置推定時間計測を開始します");
+		}
+
+		// 計測実行
+		if (timing_started_ && measurement_count_ < 1000) {
+			auto measure_start = std::chrono::high_resolution_clock::now();
+			pf_->sensorUpdate(lx, ly, lt, inv);
+			double x_var, y_var, t_var, xy_cov, yt_cov, tx_cov;
+			pf_->meanPose(x, y, t, x_var, y_var, t_var, xy_cov, yt_cov, tx_cov);
+			auto measure_end = std::chrono::high_resolution_clock::now();
+
+			auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+				measure_end - measure_start).count();
+			timing_measurements_.push_back(static_cast<double>(duration));
+			measurement_count_++;
+
+			// 1000回計測完了時に平均値を出力
+			if (measurement_count_ == 1000) {
+				double average_time = std::accumulate(timing_measurements_.begin(),
+					timing_measurements_.end(), 0.0) / timing_measurements_.size();
+				RCLCPP_INFO(get_logger(), "自己位置推定時間計測完了 (1000回平均): %.2f マイクロ秒 (%.4f ミリ秒)",
+					average_time, average_time / 1000.0);
+			}
+		} else {
+			pf_->meanPose(x, y, t, x_var, y_var, t_var, xy_cov, yt_cov, tx_cov);
+		}
 
 		publishOdomFrame(x, y, t);
 		publishPose(x, y, t, x_var, y_var, t_var, xy_cov, yt_cov, tx_cov);
@@ -291,15 +326,15 @@ void EMcl2Node::loop(void)
 		alpha_pub_->publish(alpha_msg);
 	} else {
 		if (!scan_receive_) {
-			RCLCPP_WARN(
-			  get_logger(),
-			  "Not yet received scan. Therefore, MCL cannot be initiated.");
+			// RCLCPP_WARN(
+			//   get_logger(),
+			//   "Not yet received scan. Therefore, MCL cannot be initiated.");
 		}
 		if (!compressed_data_ready_) {
-			RCLCPP_WARN(
-			  get_logger(),
-			  "Not yet received compressed map data. Therefore, MCL cannot be "
-			  "initiated.");
+			// RCLCPP_WARN(
+			//   get_logger(),
+			//   "Not yet received compressed map data. Therefore, MCL cannot be "
+			//   "initiated.");
 		}
 	}
 }
@@ -345,7 +380,7 @@ void EMcl2Node::publishOdomFrame(double x, double y, double t)
 
 		tf_->transform(tmp_tf_stamped, odom_to_map, odom_frame_id_);
 	} catch (tf2::TransformException & e) {
-		RCLCPP_DEBUG(get_logger(), "Failed to subtract base to odom transform");
+		// RCLCPP_DEBUG(get_logger(), "Failed to subtract base to odom transform");
 		return;
 	}
 	tf2::convert(odom_to_map.pose, latest_tf_);
@@ -391,8 +426,8 @@ bool EMcl2Node::getOdomPose(double & x, double & y, double & yaw)
 	try {
 		this->tf_->transform(ident, odom_pose, odom_frame_id_);
 	} catch (tf2::TransformException & e) {
-		RCLCPP_WARN(
-		  get_logger(), "Failed to compute odom pose, skipping scan (%s)", e.what());
+		// RCLCPP_WARN(
+		//   get_logger(), "Failed to compute odom pose, skipping scan (%s)", e.what());
 		return false;
 	}
 	x = odom_pose.pose.position.x;
@@ -413,8 +448,8 @@ bool EMcl2Node::getLidarPose(double & x, double & y, double & yaw, bool & inv)
 	try {
 		this->tf_->transform(ident, lidar_pose, base_frame_id_);
 	} catch (tf2::TransformException & e) {
-		RCLCPP_WARN(
-		  get_logger(), "Failed to compute lidar pose, skipping scan (%s)", e.what());
+		// RCLCPP_WARN(
+		//   get_logger(), "Failed to compute lidar pose, skipping scan (%s)", e.what());
 		return false;
 	}
 
@@ -439,9 +474,9 @@ bool EMcl2Node::cbSimpleReset(
 void EMcl2Node::cbCompressedImage(
   const binary_image_compressor::msg::CompressedBinaryImage::SharedPtr msg)
 {
-	RCLCPP_INFO(
-	  this->get_logger(), "Received Compressed Binary Image: Original Size=%dx%d, Ratio=%.2f%%",
-	  msg->original_width, msg->original_height, msg->compression_ratio);
+	// RCLCPP_INFO(
+	//   this->get_logger(), "Received Compressed Binary Image: Original Size=%dx%d, Ratio=%.2f%%",
+	//   msg->original_width, msg->original_height, msg->compression_ratio);
 
 	if (!map_receive_ && !compressed_data_ready_) {
 		compressed_map_info_.map_load_time = this->now();
@@ -460,20 +495,20 @@ void EMcl2Node::cbCompressedImage(
 		const size_t expected_pattern_bytes = (block_pixel_count + 7) / 8;
 
 		if (msg->pattern_bytes != expected_pattern_bytes) {
-			RCLCPP_WARN(
-			  this->get_logger(),
-			  "Pattern bytes mismatch: expected %zu, got %u. Proceeding cautiously.",
-			  expected_pattern_bytes, msg->pattern_bytes);
+			// RCLCPP_WARN(
+			//   this->get_logger(),
+			//   "Pattern bytes mismatch: expected %zu, got %u. Proceeding cautiously.",
+			//   expected_pattern_bytes, msg->pattern_bytes);
 		}
 		if (
 		  msg->pattern_data.size() !=
 		  static_cast<size_t>(msg->pattern_count) * msg->pattern_bytes) {
-			RCLCPP_ERROR(
-			  this->get_logger(),
-			  "Pattern data size mismatch: expected %zu, got %zu. Cannot use "
-			  "compressed map.",
-			  static_cast<size_t>(msg->pattern_count) * msg->pattern_bytes,
-			  msg->pattern_data.size());
+			// RCLCPP_ERROR(
+			//   this->get_logger(),
+			//   "Pattern data size mismatch: expected %zu, got %zu. Cannot use "
+			//   "compressed map.",
+			//   static_cast<size_t>(msg->pattern_count) * msg->pattern_bytes,
+			//   msg->pattern_data.size());
 			return;
 		}
 
@@ -491,12 +526,12 @@ void EMcl2Node::cbCompressedImage(
 		}
 
 		compressed_data_ready_ = true;
-		RCLCPP_INFO(
-		  get_logger(),
-		  "Received and processed compressed map data. Marking data as ready.");
+		// RCLCPP_INFO(
+		//   get_logger(),
+		//   "Received and processed compressed map data. Marking data as ready.");
 	} else {
-		RCLCPP_WARN(
-		  get_logger(), "Received compressed map, but map data already exists. Ignoring.");
+		// RCLCPP_WARN(
+		//   get_logger(), "Received compressed map, but map data already exists. Ignoring.");
 	}
 }
 
