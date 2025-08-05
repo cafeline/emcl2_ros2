@@ -282,12 +282,24 @@ void EMcl2Node::loop(void)
 			timing_measurements_.push_back(static_cast<double>(duration));
 			measurement_count_++;
 
-			// 1000回計測完了時に平均値を出力
+			// 1000回計測完了時に平均値と標準偏差を出力
 			if (measurement_count_ == 1000) {
 				double average_time = std::accumulate(timing_measurements_.begin(),
 					timing_measurements_.end(), 0.0) / timing_measurements_.size();
-				RCLCPP_INFO(get_logger(), "自己位置推定時間計測完了 (1000回平均): %.2f マイクロ秒 (%.4f ミリ秒)",
-					average_time, average_time / 1000.0);
+				
+				// 標準偏差計算（2パス方式）
+				double variance = 0.0;
+				for (const auto& time : timing_measurements_) {
+					double diff = time - average_time;
+					variance += diff * diff;
+				}
+				variance /= timing_measurements_.size();
+				double std_deviation = std::sqrt(variance);
+				
+				RCLCPP_INFO(get_logger(), 
+					"自己位置推定時間計測完了 (1000回) - 平均: %.2f μs (%.4f ms), 標準偏差: %.2f μs (%.4f ms)",
+					average_time, average_time / 1000.0, 
+					std_deviation, std_deviation / 1000.0);
 			}
 		} else {
 			pf_->meanPose(x, y, t, x_var, y_var, t_var, xy_cov, yt_cov, tx_cov);
