@@ -12,7 +12,7 @@
     initial_pose_x: 0.0
     initial_pose_y: 0.0
     initial_pose_a: 0.0
-    num_particles: 1000
+    num_particles: 2000
     alpha_threshold: 0.0
     expansion_radius_position: 0.1
     expansion_radius_orientation: 0.2
