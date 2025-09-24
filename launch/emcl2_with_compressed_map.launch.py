@@ -3,97 +3,51 @@ import os
 from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, GroupAction
-from launch.substitutions import LaunchConfiguration, TextSubstitution
-from launch_ros.actions import Node, SetParameter
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    params_file = LaunchConfiguration('params_file')
-    map_yaml_file = LaunchConfiguration('map')
-    use_sim_time = LaunchConfiguration('use_sim_time')
+    package_dir = get_package_share_directory('emcl2')
 
-    # パッケージディレクトリを取得
-    binary_image_compressor_dir = get_package_share_directory('binary_image_compressor')
-    emcl2_dir = get_package_share_directory('emcl2')
-    
-    declare_map_yaml = DeclareLaunchArgument(
-        'map',
-        default_value=os.path.join(
-            binary_image_compressor_dir, 'map', 'map_tsudanuma.yaml'),
-        description='Full path to map yaml file to load')
+    default_map = os.path.join(package_dir, 'map', 'compressed_map.h5')
+
+    declare_map = DeclareLaunchArgument(
+        'map_hdf5_path',
+        default_value=default_map,
+        description='Path to the compressed HDF5 map file'
+    )
+
+    declare_pointcloud_topic = DeclareLaunchArgument(
+        'pointcloud_topic',
+        default_value='/pointcloud',
+        description='PointCloud2 topic to subscribe'
+    )
+
     declare_use_sim_time = DeclareLaunchArgument(
         'use_sim_time',
         default_value='false',
-        description='Use simulation (Gazebo) clock if true')
-    declare_params_file = DeclareLaunchArgument(
-        'params_file',
-        default_value=[
-            TextSubstitution(text=os.path.join(
-                emcl2_dir, 'config', '')),
-            TextSubstitution(text='emcl2.param.yaml')],
-        description='emcl2 param file path')
+        description='Use simulation time if true'
+    )
 
-
-
-    # パラメータファイルのパスを設定
-    compressor_param_file = os.path.join(binary_image_compressor_dir, 'config', 'compressor_params.yaml')
-    emcl2_param_file = os.path.join(emcl2_dir, 'config', 'emcl2.param.yaml')
-
-    # パラメータファイルが存在するか確認
-    if not os.path.exists(compressor_param_file):
-        print(f"警告: 圧縮機のパラメータファイルが見つかりません: {compressor_param_file}")
-    if not os.path.exists(emcl2_param_file):
-        print(f"警告: EMCL2のパラメータファイルが見つかりません: {emcl2_param_file}")
-
-    # ライフサイクル管理対象のノード
-    # lifecycle_nodes = ['map_server']
-
-    launch_node = GroupAction(
-        actions=[
-            SetParameter('use_sim_time', use_sim_time),
-
-            # Map Server
-            # Node(
-            #     package='nav2_map_server',
-            #     executable='map_server',
-            #     name='map_server',
-            #     parameters=[{'yaml_filename': map_yaml_file}],
-            #     output='screen'),
-
-            # EMCL2ノード
-            Node(
-                name='emcl2',
-                package='emcl2',
-                executable='emcl2_node',
-                parameters=[emcl2_param_file],
-                output='screen'),
-
-            # 圧縮マップパブリッシャー
-            Node(
-                package='binary_image_compressor',
-                executable='compressed_image_publisher',
-                name='compressed_image_publisher',
-                parameters=[compressor_param_file],
-                output='screen',
-            ),
-
-            # Lifecycle Manager
-            # Node(
-            #     package='nav2_lifecycle_manager',
-            #     executable='lifecycle_manager',
-            #     name='lifecycle_manager_localization',
-            #     output='screen',
-            #     parameters=[{'autostart': True},
-            #                 {'node_names': lifecycle_nodes}])
-        ]
+    emcl2_node = Node(
+        package='emcl2',
+        executable='emcl2_node',
+        name='emcl2',
+        parameters=[
+            {
+                'map_hdf5_path': LaunchConfiguration('map_hdf5_path'),
+                'pointcloud_topic': LaunchConfiguration('pointcloud_topic'),
+                'use_sim_time': LaunchConfiguration('use_sim_time')
+            }
+        ],
+        output='screen'
     )
 
     ld = LaunchDescription()
-    ld.add_action(declare_map_yaml)
+    ld.add_action(declare_map)
+    ld.add_action(declare_pointcloud_topic)
     ld.add_action(declare_use_sim_time)
-    ld.add_action(declare_params_file)
-
-    ld.add_action(launch_node)
-
+    ld.add_action(emcl2_node)
     return ld

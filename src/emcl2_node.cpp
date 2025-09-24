@@ -1,552 +1,402 @@
-// SPDX-FileCopyrightText: 2022 Ryuichi Ueda ryuichiueda@gmail.com
-// SPDX-License-Identifier: LGPL-3.0-or-later
-// CAUTION: Some lines came from amcl (LGPL).
-
 #include "emcl2/emcl2_node.h"
 
-#include "binary_image_compressor/msg/compressed_binary_image.hpp"
-#include "emcl2/CompressedMap.h"
-#include "emcl2/LikelihoodFieldMap.h"
-#include "emcl2/OdomModel.h"
-#include "emcl2/Pose.h"
-#include "emcl2/Scan.h"
-
-#include <rclcpp/exceptions.hpp>
-#include <rclcpp/node_interfaces/node_topics_interface.hpp>
-#include <rclcpp/rclcpp.hpp>
-
+#include <geometry_msgs/msg/transform_stamped.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-
-#include <tf2/LinearMath/Transform.h>
-#include <tf2/convert.h>
-#include <tf2/time.h>
 #include <tf2/utils.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/create_timer_ros.h>
-#include <tf2_ros/message_filter.h>
-#include <tf2_ros/transform_broadcaster.h>
-#include <tf2_ros/transform_listener.h>
 
-#include <memory>
-#include <type_traits>
-#include <utility>
-#include <chrono>
-#include <numeric>
-#include <vector>
+#include <algorithm>
+#include <cmath>
 
 namespace emcl2
 {
+
 EMcl2Node::EMcl2Node()
-: Node("emcl2_node"),
-  ros_clock_(RCL_SYSTEM_TIME),
-  init_pf_(false),
-  init_request_(false),
-  simple_reset_request_(false),
-  scan_receive_(false),
-  map_receive_(false),
-  compressed_data_ready_(false),
-  start_time_(std::chrono::steady_clock::now()),
-  timing_started_(false),
-  measurement_count_(0)
+: Node("emcl2_node"), rng_(std::random_device{}())
 {
-	// declare ros parameters
-	declareParameter();
-	initCommunication();
+  declareParameter();
+  loadMap();
+  initializeParticles();
+  initTF();
+  initCommunication();
+
+  if (odom_freq_ > 0) {
+    const auto period = std::chrono::duration<double>(1.0 / static_cast<double>(odom_freq_));
+    loop_timer_ = this->create_wall_timer(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(period),
+      std::bind(&EMcl2Node::timerCallback, this));
+  }
 }
 
-EMcl2Node::~EMcl2Node() {}
+EMcl2Node::~EMcl2Node() = default;
 
 void EMcl2Node::declareParameter()
 {
-	this->declare_parameter("global_frame_id", std::string("map"));
-	this->declare_parameter("footprint_frame_id", std::string("base_footprint"));
-	this->declare_parameter("odom_frame_id", std::string("odom"));
-	this->declare_parameter("base_frame_id", std::string("base_link"));
+  this->declare_parameter("map_frame_id", map_frame_id_);
+  this->declare_parameter("odom_frame_id", odom_frame_id_);
+  this->declare_parameter("base_frame_id", base_frame_id_);
+  this->declare_parameter("pointcloud_topic", pointcloud_topic_);
+  this->declare_parameter("map_hdf5_path", std::string(""));
+  this->declare_parameter("odom_freq", odom_freq_);
+  this->declare_parameter("transform_tolerance", transform_tolerance_);
 
-	this->declare_parameter("odom_freq", 20);
-	this->declare_parameter("transform_tolerance", 0.2);
+  this->declare_parameter("num_particles", num_particles_);
+  this->declare_parameter("initial_pose_x", initial_pose_x_);
+  this->declare_parameter("initial_pose_y", initial_pose_y_);
+  this->declare_parameter("initial_pose_yaw", initial_pose_yaw_);
+  this->declare_parameter("initial_std_xy", initial_std_xy_);
+  this->declare_parameter("initial_std_yaw", initial_std_yaw_);
 
-	this->declare_parameter("laser_min_range", 0.0);
-	this->declare_parameter("laser_max_range", 100000000.0);
-	this->declare_parameter("scan_increment", 1);
+  this->declare_parameter("sensor_offset_x", 0.0);
+  this->declare_parameter("sensor_offset_y", 0.0);
+  this->declare_parameter("sensor_offset_z", 0.0);
+  this->declare_parameter("sensor_roll", 0.0);
+  this->declare_parameter("sensor_pitch", 0.0);
+  this->declare_parameter("sensor_yaw", 0.0);
 
-	this->declare_parameter("initial_pose_x", 0.0);
-	this->declare_parameter("initial_pose_y", 0.0);
-	this->declare_parameter("initial_pose_a", 0.0);
+  this->declare_parameter("odom_fw_dev_per_fw", odom_noise_ff_);
+  this->declare_parameter("odom_fw_dev_per_rot", odom_noise_fr_);
+  this->declare_parameter("odom_rot_dev_per_fw", odom_noise_rf_);
+  this->declare_parameter("odom_rot_dev_per_rot", odom_noise_rr_);
 
-	this->declare_parameter("num_particles", 500);
-	this->declare_parameter("alpha_threshold", 0.5);
-	this->declare_parameter("expansion_radius_position", 0.1);
-	this->declare_parameter("expansion_radius_orientation", 0.2);
-	this->declare_parameter("extraction_rate", 0.1);
-	this->declare_parameter("range_threshold", 0.1);
-	this->declare_parameter("sensor_reset", false);
+  map_frame_id_ = this->get_parameter("map_frame_id").as_string();
+  odom_frame_id_ = this->get_parameter("odom_frame_id").as_string();
+  base_frame_id_ = this->get_parameter("base_frame_id").as_string();
+  pointcloud_topic_ = this->get_parameter("pointcloud_topic").as_string();
+  odom_freq_ = this->get_parameter("odom_freq").as_int();
+  transform_tolerance_ = this->get_parameter("transform_tolerance").as_double();
 
-	this->declare_parameter("odom_fw_dev_per_fw", 0.19);
-	this->declare_parameter("odom_fw_dev_per_rot", 0.0001);
-	this->declare_parameter("odom_rot_dev_per_fw", 0.13);
-	this->declare_parameter("odom_rot_dev_per_rot", 0.2);
+  num_particles_ = this->get_parameter("num_particles").as_int();
+  initial_pose_x_ = this->get_parameter("initial_pose_x").as_double();
+  initial_pose_y_ = this->get_parameter("initial_pose_y").as_double();
+  initial_pose_yaw_ = this->get_parameter("initial_pose_yaw").as_double();
+  initial_std_xy_ = this->get_parameter("initial_std_xy").as_double();
+  initial_std_yaw_ = this->get_parameter("initial_std_yaw").as_double();
 
-	this->declare_parameter("laser_likelihood_max_dist", 0.2);
+  odom_noise_ff_ = this->get_parameter("odom_fw_dev_per_fw").as_double();
+  odom_noise_fr_ = this->get_parameter("odom_fw_dev_per_rot").as_double();
+  odom_noise_rf_ = this->get_parameter("odom_rot_dev_per_fw").as_double();
+  odom_noise_rr_ = this->get_parameter("odom_rot_dev_per_rot").as_double();
 
-	// Declare parameters for map resolution and origin (used in decompression)
-	this->declare_parameter("map_resolution", 0.05);  // Default resolution 0.05 m/pixel
-	this->declare_parameter("map_origin_x", 0.0);
-	this->declare_parameter("map_origin_y", 0.0);
-	this->declare_parameter("map_origin_z", 0.0);
+  observation_template_.sensor_offset.x() = this->get_parameter("sensor_offset_x").as_double();
+  observation_template_.sensor_offset.y() = this->get_parameter("sensor_offset_y").as_double();
+  observation_template_.sensor_offset.z() = this->get_parameter("sensor_offset_z").as_double();
+
+  const double roll = this->get_parameter("sensor_roll").as_double();
+  const double pitch = this->get_parameter("sensor_pitch").as_double();
+  const double yaw = this->get_parameter("sensor_yaw").as_double();
+  Eigen::AngleAxisd r_roll(roll, Eigen::Vector3d::UnitX());
+  Eigen::AngleAxisd r_pitch(pitch, Eigen::Vector3d::UnitY());
+  Eigen::AngleAxisd r_yaw(yaw, Eigen::Vector3d::UnitZ());
+  observation_template_.sensor_rotation = r_yaw * r_pitch * r_roll;
 }
 
-void EMcl2Node::initCommunication(void)
+void EMcl2Node::initCommunication()
 {
-	particlecloud_pub_ = create_publisher<geometry_msgs::msg::PoseArray>("particlecloud", 2);
-	pose_pub_ = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("mcl_pose", 2);
-	alpha_pub_ = create_publisher<std_msgs::msg::Float32>("alpha", 2);
+  particle_pub_ = this->create_publisher<geometry_msgs::msg::PoseArray>("particlecloud", 1);
+  pose_pub_ = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("mcl_pose", 1);
 
-	laser_scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
-	  "scan", 2, std::bind(&EMcl2Node::cbScan, this, std::placeholders::_1));
-	initial_pose_sub_ = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
-	  "initialpose", 2,
-	  std::bind(&EMcl2Node::initialPoseReceived, this, std::placeholders::_1));
-
-	compressed_image_sub_ =
-	  create_subscription<binary_image_compressor::msg::CompressedBinaryImage>(
-	    "/compressed_binary_image",
-	    rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable().durability_volatile(),
-	    std::bind(&EMcl2Node::cbCompressedImage, this, std::placeholders::_1));
-
-	global_loc_srv_ = create_service<std_srvs::srv::Empty>(
-	  "global_localization",
-	  std::bind(&EMcl2Node::cbSimpleReset, this, std::placeholders::_1, std::placeholders::_2));
-
-	this->get_parameter("global_frame_id", global_frame_id_);
-	this->get_parameter("footprint_frame_id", footprint_frame_id_);
-	this->get_parameter("odom_frame_id", odom_frame_id_);
-	this->get_parameter("base_frame_id", base_frame_id_);
-
-	this->get_parameter("odom_freq", odom_freq_);
-
-	this->get_parameter("transform_tolerance", transform_tolerance_);
+  pointcloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+    pointcloud_topic_, rclcpp::SensorDataQoS().keep_last(1),
+    std::bind(&EMcl2Node::pointCloudCallback, this, std::placeholders::_1));
 }
 
-void EMcl2Node::initTF(void)
+void EMcl2Node::initTF()
 {
-	tfb_.reset();
-	tfl_.reset();
-	tf_.reset();
-
-	tf_ = std::make_shared<tf2_ros::Buffer>(get_clock());
-	auto timer_interface = std::make_shared<tf2_ros::CreateTimerROS>(
-	  get_node_base_interface(), get_node_timers_interface(),
-	  create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive, false));
-	tf_->setCreateTimerInterface(timer_interface);
-	tfl_ = std::make_shared<tf2_ros::TransformListener>(*tf_);
-	tfb_ = std::make_shared<tf2_ros::TransformBroadcaster>(shared_from_this());
-	latest_tf_ = tf2::Transform::getIdentity();
+  tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+  tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(shared_from_this());
 }
 
-void EMcl2Node::initPF(void)
+void EMcl2Node::loadMap()
 {
-	std::shared_ptr<CompressedMap> map = std::move(initMap());
-	std::shared_ptr<OdomModel> om = std::move(initOdometry());
-
-	Scan scan;
-	this->get_parameter("laser_min_range", scan.range_min_);
-	this->get_parameter("laser_max_range", scan.range_max_);
-	this->get_parameter("scan_increment", scan.scan_increment_);
-
-	Pose init_pose;
-	this->get_parameter("initial_pose_x", init_pose.x_);
-	this->get_parameter("initial_pose_y", init_pose.y_);
-	this->get_parameter("initial_pose_a", init_pose.t_);
-
-	int num_particles;
-	double alpha_th;
-	double ex_rad_pos, ex_rad_ori;
-	this->get_parameter("num_particles", num_particles);
-	this->get_parameter("alpha_threshold", alpha_th);
-	this->get_parameter("expansion_radius_position", ex_rad_pos);
-	this->get_parameter("expansion_radius_orientation", ex_rad_ori);
-
-	double extraction_rate, range_threshold;
-	bool sensor_reset = false;
-	this->get_parameter("extraction_rate", extraction_rate);
-	this->get_parameter("range_threshold", range_threshold);
-	this->get_parameter("sensor_reset", sensor_reset);
-
-	pf_.reset(new ExpResetMcl2(
-	  init_pose, num_particles, scan, om, map, alpha_th, ex_rad_pos, ex_rad_ori,
-	  extraction_rate, range_threshold, sensor_reset));
-
-	init_pf_ = true;
+  const auto path = this->get_parameter("map_hdf5_path").as_string();
+  if (path.empty()) {
+    throw rclcpp::exceptions::InvalidParametersException("map_hdf5_path parameter is empty");
+  }
+  if (!map_.loadFromFile(path)) {
+    throw rclcpp::exceptions::InvalidParametersException("failed to load HDF5 map: " + path);
+  }
+  map_loaded_ = true;
+  RCLCPP_INFO(get_logger(), "Loaded compressed voxel map: %s", path.c_str());
 }
 
-std::shared_ptr<OdomModel> EMcl2Node::initOdometry(void)
+void EMcl2Node::initializeParticles()
 {
-	double ff, fr, rf, rr;
-	this->get_parameter("odom_fw_dev_per_fw", ff);
-	this->get_parameter("odom_fw_dev_per_rot", fr);
-	this->get_parameter("odom_rot_dev_per_fw", rf);
-	this->get_parameter("odom_rot_dev_per_rot", rr);
-	return std::shared_ptr<OdomModel>(new OdomModel(ff, fr, rf, rr));
+  if (!map_loaded_) {
+    return;
+  }
+  if (num_particles_ <= 0) {
+    num_particles_ = 1;
+  }
+
+  std::normal_distribution<double> dist_xy(0.0, initial_std_xy_);
+  std::normal_distribution<double> dist_yaw(0.0, initial_std_yaw_);
+
+  std::vector<Particle> particles;
+  particles.reserve(static_cast<std::size_t>(num_particles_));
+  for (int i = 0; i < num_particles_; ++i) {
+    double x = initial_pose_x_ + dist_xy(rng_);
+    double y = initial_pose_y_ + dist_xy(rng_);
+    double yaw = initial_pose_yaw_ + dist_yaw(rng_);
+    particles.emplace_back(x, y, yaw, 1.0);  // weight normalized later
+  }
+
+  filter_ = std::make_unique<Mcl>(std::move(particles));
+  filter_->normalizeWeights();
+  odom_model_ = std::make_unique<OdomModel>(
+    odom_noise_ff_, odom_noise_fr_, odom_noise_rf_,
+    odom_noise_rr_);
+  have_last_odom_ = false;
 }
 
-std::shared_ptr<CompressedMap> EMcl2Node::initMap(void)
+int EMcl2Node::getOdomFreq() const
 {
-	if (compressed_data_ready_) {
-		// RCLCPP_INFO(get_logger(), "Initializing map with compressed map data.");
-		// 圧縮地図を作成して直接返す
-		auto compressed_map = std::make_shared<CompressedMap>(
-		  compressed_map_info_, block_size_, patterns_, block_indices_);
-		// RCLCPP_INFO(
-		//   get_logger(),
-		//   "Using compressed map directly without likelihood field generation.");
-		return compressed_map;
-	} else {
-		// RCLCPP_ERROR(
-		//   get_logger(), "Cannot initialize map: No compressed map data received yet.");
-		return nullptr;
-	}
+  return odom_freq_;
 }
 
-void EMcl2Node::cbScan(const sensor_msgs::msg::LaserScan::ConstSharedPtr msg)
+void EMcl2Node::loop()
 {
-	if (init_pf_) {
-		scan_receive_ = true;
-		scan_time_stamp_ = msg->header.stamp;
-		scan_frame_id_ = msg->header.frame_id;
-		pf_->setScan(msg);
-	}
+  const auto now = this->now();
+  updateWithOdometry();
+  publishOutputs(now);
 }
 
-void EMcl2Node::initialPoseReceived(
-  const geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr msg)
+void EMcl2Node::timerCallback()
 {
-	// RCLCPP_INFO(get_logger(), "Run receiveInitialPose");
-	if (!initialpose_receive_) {
-		if (scan_receive_ && compressed_data_ready_) {
-			init_x_ = msg->pose.pose.position.x;
-			init_y_ = msg->pose.pose.position.y;
-			init_t_ = tf2::getYaw(msg->pose.pose.orientation);
-			pf_->initialize(init_x_, init_y_, init_t_);
-			initialpose_receive_ = true;
-		} else {
-			if (!scan_receive_) {
-				// RCLCPP_WARN(
-				//   get_logger(),
-				//   "Not yet received scan. Therefore, MCL cannot be initiated.");
-			}
-			if (!compressed_data_ready_) {
-				// RCLCPP_WARN(
-				//   get_logger(),
-				//   "Not yet received compressed map data. Therefore, MCL cannot be "
-				//   "initiated.");
-			}
-		}
-	} else {
-		init_request_ = true;
-		init_x_ = msg->pose.pose.position.x;
-		init_y_ = msg->pose.pose.position.y;
-		init_t_ = tf2::getYaw(msg->pose.pose.orientation);
-	}
+  loop();
 }
 
-void EMcl2Node::loop(void)
+void EMcl2Node::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
 {
-	if (init_request_) {
-		pf_->initialize(init_x_, init_y_, init_t_);
-		init_request_ = false;
-	} else if (simple_reset_request_) {
-		pf_->simpleReset();
-		simple_reset_request_ = false;
-	}
+  if (!filter_ || !map_loaded_) {
+    return;
+  }
 
-	// Initialize PF and TF if we have map data but haven't initialized yet
-	if (!init_pf_ && compressed_data_ready_) {
-		// RCLCPP_INFO(
-		//   get_logger(), "Compressed map data available now. Initializing PF and TF.");
-		initPF();
-		initTF();
-	}
+  updateWithOdometry();
 
-	if (init_pf_) {
-		double x, y, t;
-		if (!getOdomPose(x, y, t)) {
-			// RCLCPP_INFO(get_logger(), "can't get odometry info");
-			return;
-		}
-		pf_->motionUpdate(x, y, t);
+  PointCloudObservation observation;
+  observation.sensor_offset = observation_template_.sensor_offset;
+  observation.sensor_rotation = observation_template_.sensor_rotation;
 
-		double lx, ly, lt;
-		bool inv;
-		if (!getLidarPose(lx, ly, lt, inv)) {
-			// RCLCPP_INFO(get_logger(), "can't get lidar pose info");
-			return;
-		}
+  observation.points.reserve(static_cast<std::size_t>(msg->width) * msg->height);
 
-		// 計測開始チェック（起動から10秒後）
-		auto current_time = std::chrono::steady_clock::now();
-		auto elapsed_time = std::chrono::duration_cast<std::chrono::seconds>(current_time - start_time_).count();
+  sensor_msgs::PointCloud2Iterator<float> iter_x(*msg, "x");
+  sensor_msgs::PointCloud2Iterator<float> iter_y(*msg, "y");
+  sensor_msgs::PointCloud2Iterator<float> iter_z(*msg, "z");
+  for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z) {
+    const float x = *iter_x;
+    const float y = *iter_y;
+    const float z = *iter_z;
+    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) {
+      continue;
+    }
+    observation.points.emplace_back(
+      static_cast<double>(x), static_cast<double>(y),
+      static_cast<double>(z));
+  }
 
-		if (elapsed_time >= 10 && !timing_started_) {
-			timing_started_ = true;
-			timing_measurements_.reserve(1000);
-			RCLCPP_INFO(get_logger(), "自己位置推定時間計測を開始します");
-		}
-		double x_var, y_var, t_var, xy_cov, yt_cov, tx_cov;
+  if (observation.points.empty()) {
+    return;
+  }
 
-		// 計測実行
-		if (timing_started_ && measurement_count_ < 1000) {
-			auto measure_start = std::chrono::high_resolution_clock::now();
-			pf_->sensorUpdate(lx, ly, lt, inv);
-			pf_->meanPose(x, y, t, x_var, y_var, t_var, xy_cov, yt_cov, tx_cov);
-			auto measure_end = std::chrono::high_resolution_clock::now();
+  filter_->sensorUpdate(map_, observation);
+  filter_->normalizeWeights();
+  filter_->resample(rng_);
 
-			auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
-				measure_end - measure_start).count();
-			timing_measurements_.push_back(static_cast<double>(duration));
-			measurement_count_++;
-
-			// 1000回計測完了時に平均値を出力
-			if (measurement_count_ == 1000) {
-				double average_time = std::accumulate(timing_measurements_.begin(),
-					timing_measurements_.end(), 0.0) / timing_measurements_.size();
-				RCLCPP_INFO(get_logger(), "自己位置推定時間計測完了 (1000回平均): %.2f マイクロ秒 (%.4f ミリ秒)",
-					average_time, average_time / 1000.0);
-			}
-		} else {
-			pf_->meanPose(x, y, t, x_var, y_var, t_var, xy_cov, yt_cov, tx_cov);
-		}
-
-		publishOdomFrame(x, y, t);
-		publishPose(x, y, t, x_var, y_var, t_var, xy_cov, yt_cov, tx_cov);
-		publishParticles();
-
-		std_msgs::msg::Float32 alpha_msg;
-		alpha_msg.data = static_cast<float>(pf_->alpha_);
-		alpha_pub_->publish(alpha_msg);
-	} else {
-		if (!scan_receive_) {
-			// RCLCPP_WARN(
-			//   get_logger(),
-			//   "Not yet received scan. Therefore, MCL cannot be initiated.");
-		}
-		if (!compressed_data_ready_) {
-			// RCLCPP_WARN(
-			//   get_logger(),
-			//   "Not yet received compressed map data. Therefore, MCL cannot be "
-			//   "initiated.");
-		}
-	}
+  publishOutputs(msg->header.stamp);
 }
 
-void EMcl2Node::publishPose(
-  double x, double y, double t, double x_dev, double y_dev, double t_dev, double xy_cov,
-  double yt_cov, double tx_cov)
+bool EMcl2Node::updateWithOdometry()
 {
-	geometry_msgs::msg::PoseWithCovarianceStamped p;
-	p.header.frame_id = global_frame_id_;
-	p.header.stamp = ros_clock_.now();
-	p.pose.pose.position.x = x;
-	p.pose.pose.position.y = y;
-	p.pose.covariance[6 * 0 + 0] = x_dev;
-	p.pose.covariance[6 * 1 + 1] = y_dev;
-	p.pose.covariance[6 * 2 + 2] = t_dev;
-	p.pose.covariance[6 * 0 + 1] = xy_cov;
-	p.pose.covariance[6 * 1 + 0] = xy_cov;
-	p.pose.covariance[6 * 0 + 2] = tx_cov;
-	p.pose.covariance[6 * 2 + 0] = tx_cov;
-	p.pose.covariance[6 * 1 + 2] = yt_cov;
-	p.pose.covariance[6 * 2 + 1] = yt_cov;
+  if (!filter_ || !odom_model_) {
+    return false;
+  }
 
-	tf2::Quaternion q;
-	q.setRPY(0, 0, t);
-	tf2::convert(q, p.pose.pose.orientation);
+  geometry_msgs::msg::TransformStamped tf;
+  try {
+    tf = tf_buffer_->lookupTransform(odom_frame_id_, base_frame_id_, tf2::TimePointZero);
+  } catch (const tf2::TransformException & ex) {
+    RCLCPP_WARN_THROTTLE(get_logger(), *this->get_clock(), 2000, "TF lookup failed: %s", ex.what());
+    return false;
+  }
 
-	pose_pub_->publish(p);
+  const double yaw = tf2::getYaw(tf.transform.rotation);
+  Pose current(tf.transform.translation.x, tf.transform.translation.y, yaw);
+
+  if (!have_last_odom_) {
+    last_odom_pose_ = current;
+    have_last_odom_ = true;
+    return false;
+  }
+
+  Pose delta = current - last_odom_pose_;
+  if (delta.nearlyZero()) {
+    return false;
+  }
+
+  const double length = std::sqrt(delta.x_ * delta.x_ + delta.y_ * delta.y_);
+  const double direction = std::atan2(delta.y_, delta.x_) - last_odom_pose_.t_;
+  odom_model_->setDev(length, delta.t_);
+
+  for (auto & particle : filter_->particles()) {
+    particle.pose().move(
+      length, direction, delta.t_, odom_model_->drawFwNoise(), odom_model_->drawRotNoise());
+  }
+
+  last_odom_pose_ = current;
+  return true;
 }
 
-void EMcl2Node::publishOdomFrame(double x, double y, double t)
+Pose EMcl2Node::computeWeightedMean(double & var_x, double & var_y, double & var_yaw) const
 {
-	geometry_msgs::msg::PoseStamped odom_to_map;
-	try {
-		tf2::Quaternion q;
-		q.setRPY(0, 0, t);
-		tf2::Transform tmp_tf(q, tf2::Vector3(x, y, 0.0));
+  Pose mean(initial_pose_x_, initial_pose_y_, initial_pose_yaw_);
+  if (!filter_) {
+    var_x = var_y = var_yaw = 0.0;
+    return mean;
+  }
 
-		geometry_msgs::msg::PoseStamped tmp_tf_stamped;
-		tmp_tf_stamped.header.frame_id = footprint_frame_id_;
-		tmp_tf_stamped.header.stamp = scan_time_stamp_;
-		tf2::toMsg(tmp_tf.inverse(), tmp_tf_stamped.pose);
+  double sum_w = 0.0;
+  double sum_x = 0.0;
+  double sum_y = 0.0;
+  double sum_sin = 0.0;
+  double sum_cos = 0.0;
 
-		tf_->transform(tmp_tf_stamped, odom_to_map, odom_frame_id_);
-	} catch (tf2::TransformException & e) {
-		// RCLCPP_DEBUG(get_logger(), "Failed to subtract base to odom transform");
-		return;
-	}
-	tf2::convert(odom_to_map.pose, latest_tf_);
-	auto stamp = tf2_ros::fromMsg(scan_time_stamp_);
-	tf2::TimePoint transform_expiration = stamp + tf2::durationFromSec(transform_tolerance_);
+  for (const auto & particle : filter_->particles()) {
+    const double w = particle.weight();
+    sum_w += w;
+    sum_x += particle.pose().x_ * w;
+    sum_y += particle.pose().y_ * w;
+    sum_sin += std::sin(particle.pose().t_) * w;
+    sum_cos += std::cos(particle.pose().t_) * w;
+  }
 
-	geometry_msgs::msg::TransformStamped tmp_tf_stamped;
-	tmp_tf_stamped.header.frame_id = global_frame_id_;
-	tmp_tf_stamped.header.stamp = tf2_ros::toMsg(transform_expiration);
-	tmp_tf_stamped.child_frame_id = odom_frame_id_;
-	tf2::convert(latest_tf_.inverse(), tmp_tf_stamped.transform);
+  if (sum_w <= 0.0) {
+    var_x = var_y = var_yaw = 0.0;
+    return mean;
+  }
 
-	tfb_->sendTransform(tmp_tf_stamped);
+  mean.x_ = sum_x / sum_w;
+  mean.y_ = sum_y / sum_w;
+  mean.t_ = std::atan2(sum_sin, sum_cos);
+
+  double accum_x = 0.0;
+  double accum_y = 0.0;
+  double accum_yaw = 0.0;
+  for (const auto & particle : filter_->particles()) {
+    const double w = particle.weight();
+    accum_x += w * std::pow(particle.pose().x_ - mean.x_, 2.0);
+    accum_y += w * std::pow(particle.pose().y_ - mean.y_, 2.0);
+    double yaw_error = particle.pose().t_ - mean.t_;
+    while (yaw_error > M_PI) {
+      yaw_error -= 2 * M_PI;
+    }
+    while (yaw_error < -M_PI) {
+      yaw_error += 2 * M_PI;
+    }
+    accum_yaw += w * yaw_error * yaw_error;
+  }
+
+  var_x = accum_x / sum_w;
+  var_y = accum_y / sum_w;
+  var_yaw = accum_yaw / sum_w;
+
+  return mean;
 }
 
-void EMcl2Node::publishParticles(void)
+geometry_msgs::msg::PoseWithCovarianceStamped EMcl2Node::buildPoseMessage(
+  const Pose & mean_pose, double var_x, double var_y, double var_yaw,
+  const rclcpp::Time & stamp) const
 {
-	geometry_msgs::msg::PoseArray cloud_msg;
-	cloud_msg.header.stamp = ros_clock_.now();
-	cloud_msg.header.frame_id = global_frame_id_;
-	cloud_msg.poses.resize(pf_->particles_.size());
+  geometry_msgs::msg::PoseWithCovarianceStamped msg;
+  msg.header.stamp = stamp;
+  msg.header.frame_id = map_frame_id_;
 
-	for (size_t i = 0; i < pf_->particles_.size(); i++) {
-		cloud_msg.poses[i].position.x = pf_->particles_[i].p_.x_;
-		cloud_msg.poses[i].position.y = pf_->particles_[i].p_.y_;
-		cloud_msg.poses[i].position.z = 0;
+  msg.pose.pose.position.x = mean_pose.x_;
+  msg.pose.pose.position.y = mean_pose.y_;
+  msg.pose.pose.position.z = observation_template_.sensor_offset.z();
 
-		tf2::Quaternion q;
-		q.setRPY(0, 0, pf_->particles_[i].p_.t_);
-		tf2::convert(q, cloud_msg.poses[i].orientation);
-	}
-	particlecloud_pub_->publish(cloud_msg);
+  tf2::Quaternion q;
+  q.setRPY(0.0, 0.0, mean_pose.t_);
+  msg.pose.pose.orientation = tf2::toMsg(q);
+
+  msg.pose.covariance.fill(0.0);
+  msg.pose.covariance[0] = var_x;
+  msg.pose.covariance[7] = var_y;
+  msg.pose.covariance[35] = var_yaw;
+
+  return msg;
 }
 
-bool EMcl2Node::getOdomPose(double & x, double & y, double & yaw)
+geometry_msgs::msg::PoseArray EMcl2Node::buildParticleArray(const rclcpp::Time & stamp) const
 {
-	geometry_msgs::msg::PoseStamped ident;
-	ident.header.frame_id = footprint_frame_id_;
-	ident.header.stamp = rclcpp::Time(0);
-	tf2::toMsg(tf2::Transform::getIdentity(), ident.pose);
+  geometry_msgs::msg::PoseArray msg;
+  msg.header.stamp = stamp;
+  msg.header.frame_id = map_frame_id_;
+  msg.poses.reserve(filter_ ? filter_->particles().size() : 0);
 
-	geometry_msgs::msg::PoseStamped odom_pose;
-	try {
-		this->tf_->transform(ident, odom_pose, odom_frame_id_);
-	} catch (tf2::TransformException & e) {
-		// RCLCPP_WARN(
-		//   get_logger(), "Failed to compute odom pose, skipping scan (%s)", e.what());
-		return false;
-	}
-	x = odom_pose.pose.position.x;
-	y = odom_pose.pose.position.y;
-	yaw = tf2::getYaw(odom_pose.pose.orientation);
+  if (filter_) {
+    for (const auto & particle : filter_->particles()) {
+      geometry_msgs::msg::Pose pose;
+      pose.position.x = particle.pose().x_;
+      pose.position.y = particle.pose().y_;
+      pose.position.z = observation_template_.sensor_offset.z();
+      tf2::Quaternion q;
+      q.setRPY(0.0, 0.0, particle.pose().t_);
+      pose.orientation = tf2::toMsg(q);
+      msg.poses.push_back(pose);
+    }
+  }
 
-	return true;
+  return msg;
 }
 
-bool EMcl2Node::getLidarPose(double & x, double & y, double & yaw, bool & inv)
+void EMcl2Node::publishOutputs(const rclcpp::Time & stamp)
 {
-	geometry_msgs::msg::PoseStamped ident;
-	ident.header.frame_id = scan_frame_id_;
-	ident.header.stamp = ros_clock_.now();
-	tf2::toMsg(tf2::Transform::getIdentity(), ident.pose);
+  if (!filter_) {
+    return;
+  }
 
-	geometry_msgs::msg::PoseStamped lidar_pose;
-	try {
-		this->tf_->transform(ident, lidar_pose, base_frame_id_);
-	} catch (tf2::TransformException & e) {
-		// RCLCPP_WARN(
-		//   get_logger(), "Failed to compute lidar pose, skipping scan (%s)", e.what());
-		return false;
-	}
+  double var_x = 0.0;
+  double var_y = 0.0;
+  double var_yaw = 0.0;
+  Pose mean_pose = computeWeightedMean(var_x, var_y, var_yaw);
 
-	x = lidar_pose.pose.position.x;
-	y = lidar_pose.pose.position.y;
+  auto pose_msg = buildPoseMessage(mean_pose, var_x, var_y, var_yaw, stamp);
+  pose_pub_->publish(pose_msg);
 
-	double roll, pitch;
-	tf2::getEulerYPR(lidar_pose.pose.orientation, yaw, pitch, roll);
-	inv = (fabs(pitch) > M_PI / 2 || fabs(roll) > M_PI / 2) ? true : false;
+  auto cloud_msg = buildParticleArray(stamp);
+  particle_pub_->publish(cloud_msg);
 
-	return true;
-}
+  geometry_msgs::msg::TransformStamped tf_msg;
+  tf_msg.header.stamp = stamp;
+  tf_msg.header.frame_id = map_frame_id_;
+  tf_msg.child_frame_id = odom_frame_id_;
 
-int EMcl2Node::getOdomFreq(void) { return odom_freq_; }
+  geometry_msgs::msg::TransformStamped odom_to_base;
+  try {
+    odom_to_base = tf_buffer_->lookupTransform(odom_frame_id_, base_frame_id_, tf2::TimePointZero);
+  } catch (const tf2::TransformException &) {
+    odom_to_base = geometry_msgs::msg::TransformStamped();
+    odom_to_base.transform.rotation.w = 1.0;
+  }
 
-bool EMcl2Node::cbSimpleReset(
-  const std_srvs::srv::Empty::Request::ConstSharedPtr, std_srvs::srv::Empty::Response::SharedPtr)
-{
-	return simple_reset_request_ = true;
-}
+  tf2::Transform t_map_base;
+  t_map_base.setOrigin(
+    tf2::Vector3(
+      mean_pose.x_, mean_pose.y_,
+      observation_template_.sensor_offset.z()));
+  tf2::Quaternion q_map_base;
+  q_map_base.setRPY(0.0, 0.0, mean_pose.t_);
+  t_map_base.setRotation(q_map_base);
 
-void EMcl2Node::cbCompressedImage(
-  const binary_image_compressor::msg::CompressedBinaryImage::SharedPtr msg)
-{
-	// RCLCPP_INFO(
-	//   this->get_logger(), "Received Compressed Binary Image: Original Size=%dx%d, Ratio=%.2f%%",
-	//   msg->original_width, msg->original_height, msg->compression_ratio);
+  tf2::Transform t_odom_base;
+  tf2::fromMsg(odom_to_base.transform, t_odom_base);
+  tf2::Transform t_map_odom = t_map_base * t_odom_base.inverse();
 
-	if (!map_receive_ && !compressed_data_ready_) {
-		compressed_map_info_.map_load_time = this->now();
-		compressed_map_info_.width = msg->original_width;
-		compressed_map_info_.height = msg->original_height;
-		block_size_ = msg->block_size;
-		block_indices_ = msg->block_indices;
-
-		this->get_parameter("map_resolution", compressed_map_info_.resolution);
-		this->get_parameter("map_origin_x", compressed_map_info_.origin.position.x);
-		this->get_parameter("map_origin_y", compressed_map_info_.origin.position.y);
-		this->get_parameter("map_origin_z", compressed_map_info_.origin.position.z);
-		compressed_map_info_.origin.orientation.w = 1.0;
-
-		const size_t block_pixel_count = static_cast<size_t>(block_size_) * block_size_;
-		const size_t expected_pattern_bytes = (block_pixel_count + 7) / 8;
-
-		if (msg->pattern_bytes != expected_pattern_bytes) {
-			// RCLCPP_WARN(
-			//   this->get_logger(),
-			//   "Pattern bytes mismatch: expected %zu, got %u. Proceeding cautiously.",
-			//   expected_pattern_bytes, msg->pattern_bytes);
-		}
-		if (
-		  msg->pattern_data.size() !=
-		  static_cast<size_t>(msg->pattern_count) * msg->pattern_bytes) {
-			// RCLCPP_ERROR(
-			//   this->get_logger(),
-			//   "Pattern data size mismatch: expected %zu, got %zu. Cannot use "
-			//   "compressed map.",
-			//   static_cast<size_t>(msg->pattern_count) * msg->pattern_bytes,
-			//   msg->pattern_data.size());
-			return;
-		}
-
-		patterns_.clear();
-		patterns_.resize(msg->pattern_count);
-		for (uint16_t i = 0; i < msg->pattern_count; ++i) {
-			patterns_[i].resize(block_pixel_count);
-			const uint8_t * pattern_start = &msg->pattern_data[i * msg->pattern_bytes];
-			for (size_t p_idx = 0; p_idx < block_pixel_count; ++p_idx) {
-				const size_t byte_idx = p_idx / 8;
-				const size_t bit_idx = p_idx % 8;
-				bool is_set = (pattern_start[byte_idx] >> (7 - bit_idx)) & 1;
-				patterns_[i][p_idx] = is_set ? 0 : 100;
-			}
-		}
-
-		compressed_data_ready_ = true;
-		// RCLCPP_INFO(
-		//   get_logger(),
-		//   "Received and processed compressed map data. Marking data as ready.");
-	} else {
-		// RCLCPP_WARN(
-		//   get_logger(), "Received compressed map, but map data already exists. Ignoring.");
-	}
+  tf_msg.transform = tf2::toMsg(t_map_odom);
+  tf_broadcaster_->sendTransform(tf_msg);
 }
 
 }  // namespace emcl2
-
-int main(int argc, char ** argv)
-{
-	rclcpp::init(argc, argv);
-	auto node = std::make_shared<emcl2::EMcl2Node>();
-	rclcpp::Rate loop_rate(node->getOdomFreq());
-	while (rclcpp::ok()) {
-		node->loop();
-		rclcpp::spin_some(node);
-		loop_rate.sleep();
-	}
-	rclcpp::shutdown();
-	return 0;
-}

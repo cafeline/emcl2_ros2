@@ -1,136 +1,98 @@
-// SPDX-FileCopyrightText: 2022 Ryuichi Ueda ryuichiueda@gmail.com
-// SPDX-License-Identifier: LGPL-3.0-or-later
-// CAUTION: Some lines came from amcl (LGPL).
-
 #ifndef EMCL2__EMCL2_NODE_H_
 #define EMCL2__EMCL2_NODE_H_
 
-#include "emcl2/CompressedMap.h"
-#include "emcl2/ExpResetMcl2.h"
-#include "emcl2/LikelihoodFieldMap.h"
+#include "emcl2/CompressedVoxelMap.h"
+#include "emcl2/Mcl.h"
 #include "emcl2/OdomModel.h"
-
-#include <rclcpp/rclcpp.hpp>
-#include <rclcpp/time.hpp>
+#include "emcl2/PointCloudObservation.h"
 
 #include <geometry_msgs/msg/pose_array.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
-#include <nav_msgs/msg/map_meta_data.hpp>
-#include <nav_msgs/msg/occupancy_grid.hpp>
-#include <sensor_msgs/msg/laser_scan.hpp>
-#include <std_msgs/msg/float32.hpp>
-#include <std_srvs/srv/empty.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 
-// Include the message header
-#include "binary_image_compressor/msg/compressed_binary_image.hpp"
+#include <rclcpp/rclcpp.hpp>
 
-#include <tf2/LinearMath/Transform.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/transform_listener.h>
 
+#include <Eigen/Geometry>
+
 #include <memory>
+#include <random>
 #include <string>
-#include <chrono>
-#include <numeric>
-#include <vector>
 
 namespace emcl2
 {
-class EMcl2Node : public rclcpp::Node
-{
-      public:
-	EMcl2Node();
-	~EMcl2Node();
 
-	void loop(void);
-	int getOdomFreq(void);
+  class EMcl2Node: public rclcpp::Node
+  {
+public:
+    EMcl2Node();
+    ~EMcl2Node() override;
 
-      private:
-	std::shared_ptr<ExpResetMcl2> pf_;
+    void loop();
+    int getOdomFreq() const;
 
-	rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr particlecloud_pub_;
-	rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_pub_;
-	rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr alpha_pub_;
-	rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr laser_scan_sub_;
-	rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr
-	  initial_pose_sub_;
-	rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
+private:
+    void declareParameter();
+    void initCommunication();
+    void initTF();
+    void loadMap();
+    void initializeParticles();
 
-	// Add subscriber declaration
-	rclcpp::Subscription<binary_image_compressor::msg::CompressedBinaryImage>::SharedPtr
-	  compressed_image_sub_;
+    void pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
+    void timerCallback();
 
-	// ros::ServiceServer global_loc_srv_;
-	rclcpp::Service<std_srvs::srv::Empty>::SharedPtr global_loc_srv_;
-	rclcpp::Time scan_time_stamp_;
+    bool updateWithOdometry();
+    void publishOutputs(const rclcpp::Time & stamp);
+    geometry_msgs::msg::PoseWithCovarianceStamped buildPoseMessage(
+      const Pose & mean_pose, double var_x, double var_y, double var_yaw,
+      const rclcpp::Time & stamp) const;
+    geometry_msgs::msg::PoseArray buildParticleArray(const rclcpp::Time & stamp) const;
+    Pose computeWeightedMean(double & var_x, double & var_y, double & var_yaw) const;
 
-	std::string footprint_frame_id_;
-	std::string global_frame_id_;
-	std::string odom_frame_id_;
-	std::string scan_frame_id_;
-	std::string base_frame_id_;
+    CompressedVoxelMap map_;
+    std::unique_ptr < Mcl > filter_;
+    std::unique_ptr < OdomModel > odom_model_;
+    PointCloudObservation observation_template_;
 
-	std::shared_ptr<tf2_ros::TransformBroadcaster> tfb_;
-	std::shared_ptr<tf2_ros::TransformListener> tfl_;
-	std::shared_ptr<tf2_ros::Buffer> tf_;
+    std::string map_frame_id_ {"map"};
+    std::string odom_frame_id_ {"odom"};
+    std::string base_frame_id_ {"base_link"};
+    std::string pointcloud_topic_ {"/pointcloud"};
+    double transform_tolerance_ {0.2};
+    int odom_freq_ {20};
+    bool map_loaded_ {false};
 
-	tf2::Transform latest_tf_;
+    std::mt19937 rng_;
 
-	rclcpp::Clock ros_clock_;
+    rclcpp::Subscription < sensor_msgs::msg::PointCloud2 > ::SharedPtr pointcloud_sub_;
+    rclcpp::Publisher < geometry_msgs::msg::PoseArray > ::SharedPtr particle_pub_;
+    rclcpp::Publisher < geometry_msgs::msg::PoseWithCovarianceStamped > ::SharedPtr pose_pub_;
 
-	int odom_freq_;
-	bool init_pf_;
-	bool init_request_;
-	bool initialpose_receive_;
-	bool simple_reset_request_;
-	bool scan_receive_;
-	bool map_receive_;
-	bool compressed_data_ready_;
-	double init_x_, init_y_, init_t_;
-	double transform_tolerance_;
-	
-	std::chrono::steady_clock::time_point start_time_;
-	std::vector<double> timing_measurements_;
-	bool timing_started_;
-	int measurement_count_;
+    std::shared_ptr < tf2_ros::Buffer > tf_buffer_;
+    std::shared_ptr < tf2_ros::TransformListener > tf_listener_;
+    std::shared_ptr < tf2_ros::TransformBroadcaster > tf_broadcaster_;
+    rclcpp::TimerBase::SharedPtr loop_timer_;
 
-	void publishPose(
-	  double x, double y, double t, double x_dev, double y_dev, double t_dev, double xy_cov,
-	  double yt_cov, double tx_cov);
-	void publishOdomFrame(double x, double y, double t);
-	void publishParticles(void);
-	bool getOdomPose(double & x, double & y, double & yaw);	 // same name is found in amcl
-	bool getLidarPose(double & x, double & y, double & yaw, bool & inv);
-	void receiveMap(const nav_msgs::msg::OccupancyGrid::ConstSharedPtr msg);
+    Pose last_odom_pose_;
+    bool have_last_odom_ {false};
 
-	void declareParameter();
+    double initial_pose_x_ {0.0};
+    double initial_pose_y_ {0.0};
+    double initial_pose_yaw_ {0.0};
+    double initial_std_xy_ {0.5};
+    double initial_std_yaw_ {0.5};
 
-	void initCommunication(void);
-	void initTF();
-	void initPF(void);
-	std::shared_ptr<CompressedMap> initMap(void);
-	std::shared_ptr<OdomModel> initOdometry(void);
+    int num_particles_ {200};
 
-	nav_msgs::msg::OccupancyGrid map_;
-	nav_msgs::msg::MapMetaData compressed_map_info_;
-	uint8_t block_size_;
-	std::vector<std::vector<int8_t>> patterns_;
-	std::vector<uint16_t> block_indices_;
-
-	void cbScan(const sensor_msgs::msg::LaserScan::ConstSharedPtr msg);
-	// bool cbSimpleReset(std_srvs::Empty::Request & req, std_srvs::Empty::Response & res);
-	bool cbSimpleReset(
-	  const std_srvs::srv::Empty::Request::ConstSharedPtr,
-	  std_srvs::srv::Empty::Response::SharedPtr);
-	void initialPoseReceived(const geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr
-				   msg);  // same name is found in amcl
-
-	// Add callback function declaration
-	void cbCompressedImage(
-	  const binary_image_compressor::msg::CompressedBinaryImage::SharedPtr msg);
-};
+    double odom_noise_ff_ {0.05};
+    double odom_noise_fr_ {0.05};
+    double odom_noise_rf_ {0.05};
+    double odom_noise_rr_ {0.05};
+  };
 
 }  // namespace emcl2
 
-#endif	// EMCL2__EMCL2_NODE_H_
+#endif  // EMCL2__EMCL2_NODE_H_
