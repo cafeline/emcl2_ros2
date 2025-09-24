@@ -1,0 +1,32 @@
+/**:
+  ros__parameters:
+    use_sim_time: false
+    map_frame_id: "map"
+    odom_frame_id: "odom"
+    base_frame_id: "base_link"
+    footprint_frame_id: "base_footprint"
+    pointcloud_topic: "/pointcloud"
+    map_hdf5_path: "/tmp/tsudanuma_voxelsize_015_compressed_map.h5"
+    transform_tolerance: 0.2
+    odom_freq: 20
+    num_particles: 2000
+    initial_pose_x: 0.0
+    initial_pose_y: 0.0
+    initial_pose_yaw: 0.0
+    initial_std_xy: 0.5
+    initial_std_yaw: 0.5
+    sensor_offset_x: 0.0
+    sensor_offset_y: 0.0
+    sensor_offset_z: 0.0
+    sensor_roll: 0.0
+    sensor_pitch: 0.0
+    sensor_yaw: 0.0
+    odom_fw_dev_per_fw: 0.19
+    odom_fw_dev_per_rot: 0.0001
+    odom_rot_dev_per_fw: 0.13
+    odom_rot_dev_per_rot: 0.2
+    laser_likelihood_max_dist: 0.2
+    laser_min_range: 0.0
+    laser_max_range: 100000000.0
+    alpha_threshold: 0.0
+    sensor_reset: false

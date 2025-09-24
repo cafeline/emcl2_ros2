@@ -10,44 +10,27 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     package_dir = get_package_share_directory('emcl2')
-
-    default_map = os.path.join(package_dir, 'map', 'compressed_map.h5')
-
-    declare_map = DeclareLaunchArgument(
-        'map_hdf5_path',
-        default_value=default_map,
-        description='Path to the compressed HDF5 map file'
+    default_params = os.path.join(
+        package_dir,
+        'config',
+        'emcl2_with_compressed_map.param.yaml'
     )
 
-    declare_pointcloud_topic = DeclareLaunchArgument(
-        'pointcloud_topic',
-        default_value='/pointcloud',
-        description='PointCloud2 topic to subscribe'
-    )
-
-    declare_use_sim_time = DeclareLaunchArgument(
-        'use_sim_time',
-        default_value='false',
-        description='Use simulation time if true'
+    declare_params = DeclareLaunchArgument(
+        'params_file',
+        default_value=default_params,
+        description='Path to the YAML file with parameters for emcl2_node'
     )
 
     emcl2_node = Node(
         package='emcl2',
         executable='emcl2_node',
         name='emcl2',
-        parameters=[
-            {
-                'map_hdf5_path': LaunchConfiguration('map_hdf5_path'),
-                'pointcloud_topic': LaunchConfiguration('pointcloud_topic'),
-                'use_sim_time': LaunchConfiguration('use_sim_time')
-            }
-        ],
+        parameters=[LaunchConfiguration('params_file')],
         output='screen'
     )
 
     ld = LaunchDescription()
-    ld.add_action(declare_map)
-    ld.add_action(declare_pointcloud_topic)
-    ld.add_action(declare_use_sim_time)
+    ld.add_action(declare_params)
     ld.add_action(emcl2_node)
     return ld
