@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 
 namespace emcl2
 {
@@ -173,6 +174,7 @@ void EMcl2Node::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPt
   if (!filter_ || !map_loaded_) {
     return;
   }
+  auto t_start = std::chrono::steady_clock::now();
 
   updateWithOdometry();
 
@@ -200,10 +202,29 @@ void EMcl2Node::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPt
   if (observation.points.empty()) {
     return;
   }
+  auto t_start_su = std::chrono::steady_clock::now();
 
   filter_->sensorUpdate(map_, observation);
+
+  RCLCPP_INFO(
+    get_logger(), "sensor update : %.3f ms",
+    static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
+			  std::chrono::steady_clock::now() - t_start_su)
+			  .count()) /
+      1000.0);
+
   filter_->normalizeWeights();
   filter_->resample(rng_);
+
+
+
+
+  RCLCPP_INFO(
+    get_logger(), "MCL update: %.3f ms",
+    static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
+			  std::chrono::steady_clock::now() - t_start)
+			  .count()) /
+      1000.0);
 
   publishOutputs(msg->header.stamp);
 }

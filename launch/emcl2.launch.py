@@ -10,13 +10,13 @@ from launch_ros.actions import Node, SetParameter
 
 def generate_launch_description():
     params_file = LaunchConfiguration('params_file')
-    map_yaml_file = LaunchConfiguration('map')
+    # ユーザ要望: map_yaml_file を引数ではなくこのファイル内で直接指定
+    # 注意: 絶対パスをハードコードすると他環境で再利用しづらいので、
+    #       共有用にする場合は再度 LaunchArgument 化するか、パッケージの share に配置してください。
+    hardcoded_map_yaml = '/home/ryo/raspicat_ws/src/maps/mile1_2_50.yaml'
     use_sim_time = LaunchConfiguration('use_sim_time')
 
-    declare_map_yaml = DeclareLaunchArgument(
-        'map',
-        default_value='',
-        description='Full path to map yaml file to load')
+    # map の Launch 引数は不要になったため削除（再利用したい場合は復活させてください）
     declare_use_sim_time = DeclareLaunchArgument(
         'use_sim_time',
         default_value='false',
@@ -26,7 +26,7 @@ def generate_launch_description():
         default_value=[
             TextSubstitution(text=os.path.join(
                 get_package_share_directory('emcl2'), 'config', '')),
-            TextSubstitution(text='emcl2.param.yaml')],
+            TextSubstitution(text='emcl2_with_compressed_map.param.yaml')],
         description='emcl2 param file path')
 
     lifecycle_nodes = ['map_server']
@@ -38,7 +38,13 @@ def generate_launch_description():
                 package='nav2_map_server',
                 executable='map_server',
                 name='map_server',
-                parameters=[{'yaml_filename': map_yaml_file}],
+                parameters=[{'yaml_filename': hardcoded_map_yaml}],
+                output='screen'),
+            Node(
+                package='tf2_ros',
+                executable='static_transform_publisher',
+                name='livox_static_tf',
+                arguments=['0', '0', '0', '0', '0', '0', 'base_link', 'livox_frame'],
                 output='screen'),
             Node(
                 name='emcl2',
@@ -57,7 +63,7 @@ def generate_launch_description():
     )
 
     ld = LaunchDescription()
-    ld.add_action(declare_map_yaml)
+    # map 引数宣言は削除済み
     ld.add_action(declare_use_sim_time)
     ld.add_action(declare_params_file)
 

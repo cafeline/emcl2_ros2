@@ -1,15 +1,15 @@
 /**:
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: true
     map_frame_id: "map"
     odom_frame_id: "odom"
     base_frame_id: "base_link"
     footprint_frame_id: "base_footprint"
-    pointcloud_topic: "/pointcloud"
-    map_hdf5_path: "/tmp/tsudanuma_voxelsize_015_compressed_map.h5"
+    pointcloud_topic: "/livox/lidar"
+    map_hdf5_path: "/home/ryo/raspicat_ws/src/maps/tsudanuma_voxelsize_015_compressed_map.h5"
     transform_tolerance: 0.2
     odom_freq: 20
-    num_particles: 2000
+    num_particles: 100
     initial_pose_x: 0.0
     initial_pose_y: 0.0
     initial_pose_yaw: 0.0
