@@ -3,12 +3,14 @@
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <tf2/LinearMath/Quaternion.h>
+#include <tf2/LinearMath/Transform.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2/utils.h>
 
 #include <algorithm>
 #include <cmath>
 #include <chrono>
+#include <limits>
 
 namespace emcl2
 {
@@ -56,6 +58,32 @@ void EMcl2Node::declareParameter()
   this->declare_parameter("sensor_pitch", 0.0);
   this->declare_parameter("sensor_yaw", 0.0);
 
+  const auto default_z_min_param = this->declare_parameter(
+    "height_filter.default_z_min", -std::numeric_limits<double>::max());
+  const auto default_z_max_param = this->declare_parameter(
+    "height_filter.default_z_max", std::numeric_limits<double>::max());
+  publish_filtered_pointcloud_ = this->declare_parameter(
+    "height_filter.publish_filtered_pointcloud",
+    publish_filtered_pointcloud_);
+  filtered_pointcloud_topic_ = this->declare_parameter(
+    "height_filter.filtered_pointcloud_topic",
+    filtered_pointcloud_topic_);
+  const auto region_names = this->declare_parameter<std::vector<std::string>>(
+    "height_filter.region_names", std::vector<std::string>{});
+  std::vector<HeightRegion> height_regions;
+  height_regions.reserve(region_names.size());
+  for (const auto & region_name : region_names) {
+    const std::string prefix = "height_filter.regions." + region_name + ".";
+    HeightRegion region;
+    region.x_min = this->declare_parameter(prefix + "x_min", 0.0);
+    region.x_max = this->declare_parameter(prefix + "x_max", 0.0);
+    region.y_min = this->declare_parameter(prefix + "y_min", 0.0);
+    region.y_max = this->declare_parameter(prefix + "y_max", 0.0);
+    region.z_min = this->declare_parameter(prefix + "z_min", default_z_min_param);
+    region.z_max = this->declare_parameter(prefix + "z_max", default_z_max_param);
+    height_regions.push_back(region);
+  }
+
   this->declare_parameter("odom_fw_dev_per_fw", odom_noise_ff_);
   this->declare_parameter("odom_fw_dev_per_rot", odom_noise_fr_);
   this->declare_parameter("odom_rot_dev_per_fw", odom_noise_rf_);
@@ -91,12 +119,20 @@ void EMcl2Node::declareParameter()
   Eigen::AngleAxisd r_pitch(pitch, Eigen::Vector3d::UnitY());
   Eigen::AngleAxisd r_yaw(yaw, Eigen::Vector3d::UnitZ());
   observation_template_.sensor_rotation = r_yaw * r_pitch * r_roll;
+
+  height_filter_ = std::make_unique<PointCloudHeightFilter>(
+    default_z_min_param, default_z_max_param, std::move(height_regions));
 }
 
 void EMcl2Node::initCommunication()
 {
   particle_pub_ = this->create_publisher<geometry_msgs::msg::PoseArray>("particlecloud", 1);
   pose_pub_ = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("mcl_pose", 1);
+
+  if (publish_filtered_pointcloud_) {
+    filtered_cloud_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
+      filtered_pointcloud_topic_, rclcpp::SensorDataQoS().keep_last(1));
+  }
 
   pointcloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
     pointcloud_topic_, rclcpp::SensorDataQoS().keep_last(1),
@@ -181,8 +217,24 @@ void EMcl2Node::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPt
   PointCloudObservation observation;
   observation.sensor_offset = observation_template_.sensor_offset;
   observation.sensor_rotation = observation_template_.sensor_rotation;
+  rclcpp::Time cloud_stamp(msg->header.stamp);
+  if (cloud_stamp.nanoseconds() == 0) {
+    cloud_stamp = this->now();
+    if (cloud_stamp.nanoseconds() == 0) {
+      cloud_stamp = rclcpp::Clock(RCL_SYSTEM_TIME).now();
+    }
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *this->get_clock(), 2000,
+      "PointCloud stamp was 0; replaced with current node time %.3f s",
+      cloud_stamp.seconds());
+  }
+  double dummy_var_x = 0.0;
+  double dummy_var_y = 0.0;
+  double dummy_var_yaw = 0.0;
+  Pose mean_pose = computeWeightedMean(dummy_var_x, dummy_var_y, dummy_var_yaw);
 
-  observation.points.reserve(static_cast<std::size_t>(msg->width) * msg->height);
+  std::vector<Eigen::Vector3d> raw_points;
+  raw_points.reserve(static_cast<std::size_t>(msg->width) * msg->height);
 
   sensor_msgs::PointCloud2Iterator<float> iter_x(*msg, "x");
   sensor_msgs::PointCloud2Iterator<float> iter_y(*msg, "y");
@@ -194,39 +246,100 @@ void EMcl2Node::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPt
     if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) {
       continue;
     }
-    observation.points.emplace_back(
+    raw_points.emplace_back(
       static_cast<double>(x), static_cast<double>(y),
       static_cast<double>(z));
   }
 
-  if (observation.points.empty()) {
+  if (raw_points.empty()) {
     return;
   }
+
+  std::vector<Eigen::Vector3d> filtered_points;
+  if (height_filter_) {
+    filtered_points = height_filter_->filter(raw_points, mean_pose.x_, mean_pose.y_);
+  } else {
+    filtered_points = std::move(raw_points);
+  }
+
+  if (filtered_points.empty()) {
+    return;
+  }
+
+  observation.points = std::move(filtered_points);
+  const auto & filtered_points_ref = observation.points;
+
+  if (true) {
+    // TODO(ryo): re-enable filtered_cloud_pub_ gate when topic toggle is used.
+    try {
+      const auto transform = tf_buffer_->lookupTransform(
+        map_frame_id_, msg->header.frame_id, tf2::TimePointZero);
+      sensor_msgs::msg::PointCloud2 filtered_msg;
+      filtered_msg.header.stamp = cloud_stamp;
+      filtered_msg.header.frame_id = map_frame_id_;
+      filtered_msg.height = 1;
+      filtered_msg.width = static_cast<uint32_t>(filtered_points_ref.size());
+      filtered_msg.is_bigendian = false;
+      filtered_msg.is_dense = false;
+      filtered_msg.fields.resize(3);
+      filtered_msg.fields[0].name = "x";
+      filtered_msg.fields[0].offset = 0;
+      filtered_msg.fields[0].datatype = sensor_msgs::msg::PointField::FLOAT32;
+      filtered_msg.fields[0].count = 1;
+      filtered_msg.fields[1].name = "y";
+      filtered_msg.fields[1].offset = 4;
+      filtered_msg.fields[1].datatype = sensor_msgs::msg::PointField::FLOAT32;
+      filtered_msg.fields[1].count = 1;
+      filtered_msg.fields[2].name = "z";
+      filtered_msg.fields[2].offset = 8;
+      filtered_msg.fields[2].datatype = sensor_msgs::msg::PointField::FLOAT32;
+      filtered_msg.fields[2].count = 1;
+      filtered_msg.point_step = 12;
+      filtered_msg.row_step = filtered_msg.point_step * filtered_msg.width;
+      filtered_msg.data.resize(
+        static_cast<std::size_t>(filtered_msg.row_step) * filtered_msg.height);
+      sensor_msgs::PointCloud2Iterator<float> out_x(filtered_msg, "x");
+      sensor_msgs::PointCloud2Iterator<float> out_y(filtered_msg, "y");
+      sensor_msgs::PointCloud2Iterator<float> out_z(filtered_msg, "z");
+      tf2::Transform tf_map_from_cloud;
+      tf2::fromMsg(transform.transform, tf_map_from_cloud);
+      for (const auto & point : filtered_points_ref) {
+        const tf2::Vector3 cloud_point(point.x(), point.y(), point.z());
+        const tf2::Vector3 map_point = tf_map_from_cloud * cloud_point;
+        *out_x = static_cast<float>(map_point.x());
+        *out_y = static_cast<float>(map_point.y());
+        *out_z = static_cast<float>(map_point.z());
+        ++out_x;
+        ++out_y;
+        ++out_z;
+      }
+      RCLCPP_INFO(get_logger(), "#############################################PUBLISH");
+      filtered_cloud_pub_->publish(filtered_msg);
+    } catch (const tf2::TransformException & ex) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *this->get_clock(), 2000,
+        "Failed to transform filtered pointcloud to map frame: %s", ex.what());
+    }
+  }
   auto t_start_su = std::chrono::steady_clock::now();
+  RCLCPP_INFO(get_logger(), "#############################################hoge");
 
   filter_->sensorUpdate(map_, observation);
-
+  const auto sensor_update_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+    std::chrono::steady_clock::now() - t_start_su);
   RCLCPP_INFO(
     get_logger(), "sensor update : %.3f ms",
-    static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
-			  std::chrono::steady_clock::now() - t_start_su)
-			  .count()) /
-      1000.0);
+    static_cast<double>(sensor_update_elapsed.count()) / 1000.0);
 
   filter_->normalizeWeights();
   filter_->resample(rng_);
-
-
-
-
+  const auto total_update_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+    std::chrono::steady_clock::now() - t_start);
   RCLCPP_INFO(
     get_logger(), "MCL update: %.3f ms",
-    static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(
-			  std::chrono::steady_clock::now() - t_start)
-			  .count()) /
-      1000.0);
+    static_cast<double>(total_update_elapsed.count()) / 1000.0);
 
-  publishOutputs(msg->header.stamp);
+  publishOutputs(cloud_stamp);
 }
 
 bool EMcl2Node::updateWithOdometry()
@@ -379,19 +492,31 @@ void EMcl2Node::publishOutputs(const rclcpp::Time & stamp)
     return;
   }
 
+  rclcpp::Time effective_stamp = stamp;
+  if (effective_stamp.nanoseconds() == 0) {
+    effective_stamp = this->now();
+    if (effective_stamp.nanoseconds() == 0) {
+      effective_stamp = rclcpp::Clock(RCL_SYSTEM_TIME).now();
+    }
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *this->get_clock(), 2000,
+      "Output stamp was 0; replaced with current node time %.3f s",
+      effective_stamp.seconds());
+  }
+
   double var_x = 0.0;
   double var_y = 0.0;
   double var_yaw = 0.0;
   Pose mean_pose = computeWeightedMean(var_x, var_y, var_yaw);
 
-  auto pose_msg = buildPoseMessage(mean_pose, var_x, var_y, var_yaw, stamp);
+  auto pose_msg = buildPoseMessage(mean_pose, var_x, var_y, var_yaw, effective_stamp);
   pose_pub_->publish(pose_msg);
 
-  auto cloud_msg = buildParticleArray(stamp);
+  auto cloud_msg = buildParticleArray(effective_stamp);
   particle_pub_->publish(cloud_msg);
 
   geometry_msgs::msg::TransformStamped tf_msg;
-  tf_msg.header.stamp = stamp;
+  tf_msg.header.stamp = effective_stamp;
   tf_msg.header.frame_id = map_frame_id_;
   tf_msg.child_frame_id = odom_frame_id_;
 

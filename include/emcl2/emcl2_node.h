@@ -4,6 +4,7 @@
 #include "emcl2/CompressedVoxelMap.h"
 #include "emcl2/Mcl.h"
 #include "emcl2/OdomModel.h"
+#include "emcl2/PointCloudHeightFilter.h"
 #include "emcl2/PointCloudObservation.h"
 
 #include <geometry_msgs/msg/pose_array.hpp>
@@ -56,20 +57,24 @@ private:
     std::unique_ptr < Mcl > filter_;
     std::unique_ptr < OdomModel > odom_model_;
     PointCloudObservation observation_template_;
+    std::unique_ptr < PointCloudHeightFilter > height_filter_;
 
     std::string map_frame_id_ {"map"};
     std::string odom_frame_id_ {"odom"};
     std::string base_frame_id_ {"base_link"};
     std::string pointcloud_topic_ {"/pointcloud"};
+    std::string filtered_pointcloud_topic_ {"filtered_pointcloud"};
     double transform_tolerance_ {0.2};
     int odom_freq_ {20};
     bool map_loaded_ {false};
+    bool publish_filtered_pointcloud_ {false};
 
     std::mt19937 rng_;
 
     rclcpp::Subscription < sensor_msgs::msg::PointCloud2 > ::SharedPtr pointcloud_sub_;
     rclcpp::Publisher < geometry_msgs::msg::PoseArray > ::SharedPtr particle_pub_;
     rclcpp::Publisher < geometry_msgs::msg::PoseWithCovarianceStamped > ::SharedPtr pose_pub_;
+    rclcpp::Publisher < sensor_msgs::msg::PointCloud2 > ::SharedPtr filtered_cloud_pub_;
 
     std::shared_ptr < tf2_ros::Buffer > tf_buffer_;
     std::shared_ptr < tf2_ros::TransformListener > tf_listener_;
