@@ -80,4 +80,17 @@ void Mcl::resample(std::mt19937 & rng)
   particles_.swap(resampled);
 }
 
+void Mcl::initialize(double x, double y, double yaw)
+{
+  if (particles_.empty()) {
+    return;
+  }
+
+  double uniform_weight = 1.0 / static_cast<double>(particles_.size());
+  for (auto & particle : particles_) {
+    particle.pose().set(x, y, yaw);
+    particle.setWeight(uniform_weight);
+  }
+}
+
 }  // namespace emcl2

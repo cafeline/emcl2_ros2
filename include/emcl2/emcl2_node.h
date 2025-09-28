@@ -43,6 +43,8 @@ private:
 
     void pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
     void timerCallback();
+    void initialPoseReceived(
+      const geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr msg);
 
     bool updateWithOdometry();
     void publishOutputs(const rclcpp::Time & stamp);
@@ -64,10 +66,16 @@ private:
     double transform_tolerance_ {0.2};
     int odom_freq_ {20};
     bool map_loaded_ {false};
+    bool map_receive_ {false};
+    bool scan_receive_ {false};
+    bool initialpose_receive_ {false};
+    bool init_request_ {false};
 
     std::mt19937 rng_;
 
     rclcpp::Subscription < sensor_msgs::msg::PointCloud2 > ::SharedPtr pointcloud_sub_;
+    rclcpp::Subscription < geometry_msgs::msg::PoseWithCovarianceStamped > ::SharedPtr
+      initial_pose_sub_;
     rclcpp::Publisher < geometry_msgs::msg::PoseArray > ::SharedPtr particle_pub_;
     rclcpp::Publisher < geometry_msgs::msg::PoseWithCovarianceStamped > ::SharedPtr pose_pub_;
 
@@ -78,6 +86,9 @@ private:
 
     Pose last_odom_pose_;
     bool have_last_odom_ {false};
+    double init_x_ {0.0};
+    double init_y_ {0.0};
+    double init_t_ {0.0};
 
     double initial_pose_x_ {0.0};
     double initial_pose_y_ {0.0};

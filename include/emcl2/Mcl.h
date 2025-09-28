@@ -18,6 +18,7 @@ public:
     void sensorUpdate(const CompressedVoxelMap & map, const PointCloudObservation & observation);
     void normalizeWeights();
     void resample(std::mt19937 & rng);
+    void initialize(double x, double y, double yaw);
 
     const std::vector < Particle > & particles() const {return particles_;}
     std::vector < Particle > &particles() {

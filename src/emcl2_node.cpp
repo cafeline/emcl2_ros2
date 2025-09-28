@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <chrono>
+#include <functional>
 
 namespace emcl2
 {
@@ -100,6 +101,10 @@ void EMcl2Node::initCommunication()
   particle_pub_ = this->create_publisher<geometry_msgs::msg::PoseArray>("particlecloud", 1);
   pose_pub_ = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("mcl_pose", 1);
 
+  initial_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+    "initialpose", rclcpp::QoS(rclcpp::KeepLast(1)),
+    std::bind(&EMcl2Node::initialPoseReceived, this, std::placeholders::_1));
+
   pointcloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
     pointcloud_topic_, rclcpp::SensorDataQoS().keep_last(1),
     std::bind(&EMcl2Node::pointCloudCallback, this, std::placeholders::_1));
@@ -122,12 +127,14 @@ void EMcl2Node::loadMap()
     throw rclcpp::exceptions::InvalidParametersException("failed to load HDF5 map: " + path);
   }
   map_loaded_ = true;
+  map_receive_ = true;
   RCLCPP_INFO(get_logger(), "Loaded compressed voxel map: %s", path.c_str());
 }
 
 void EMcl2Node::initializeParticles()
 {
   if (!map_loaded_) {
+    RCLCPP_WARN(get_logger(), "Map is not loaded yet; skipping particle initialization.");
     return;
   }
   if (num_particles_ <= 0) {
@@ -143,7 +150,8 @@ void EMcl2Node::initializeParticles()
     double x = initial_pose_x_ + dist_xy(rng_);
     double y = initial_pose_y_ + dist_xy(rng_);
     double yaw = initial_pose_yaw_ + dist_yaw(rng_);
-    particles.emplace_back(x, y, yaw, 1.0);  // weight normalized later
+    yaw = std::atan2(std::sin(yaw), std::cos(yaw));
+    particles.emplace_back(x, y, yaw, 1.0);
   }
 
   filter_ = std::make_unique<Mcl>(std::move(particles));
@@ -152,6 +160,44 @@ void EMcl2Node::initializeParticles()
     odom_noise_ff_, odom_noise_fr_, odom_noise_rf_,
     odom_noise_rr_);
   have_last_odom_ = false;
+  initialpose_receive_ = false;
+  init_request_ = false;
+}
+
+void EMcl2Node::initialPoseReceived(
+  const geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr msg)
+{
+  if (!msg) {
+    return;
+  }
+  RCLCPP_INFO(get_logger(), "Run receiveInitialPose");
+
+  init_x_ = msg->pose.pose.position.x;
+  init_y_ = msg->pose.pose.position.y;
+  init_t_ = tf2::getYaw(msg->pose.pose.orientation);
+
+  if (!initialpose_receive_) {
+    if (scan_receive_ && map_receive_) {
+      if (filter_) {
+        filter_->initialize(init_x_, init_y_, init_t_);
+        initialpose_receive_ = true;
+        have_last_odom_ = false;
+      }
+    } else {
+      if (!scan_receive_) {
+        RCLCPP_WARN(
+          get_logger(),
+          "Not yet received scan. Therefore, MCL cannot be initiated.");
+      }
+      if (!map_receive_) {
+        RCLCPP_WARN(
+          get_logger(),
+          "Not yet received map. Therefore, MCL cannot be initiated.");
+      }
+    }
+  } else {
+    init_request_ = true;
+  }
 }
 
 int EMcl2Node::getOdomFreq() const
@@ -161,6 +207,14 @@ int EMcl2Node::getOdomFreq() const
 
 void EMcl2Node::loop()
 {
+  if (init_request_) {
+    if (filter_) {
+      filter_->initialize(init_x_, init_y_, init_t_);
+      have_last_odom_ = false;
+    }
+    init_request_ = false;
+  }
+
   const auto now = this->now();
   updateWithOdometry();
   publishOutputs(now);
@@ -176,6 +230,7 @@ void EMcl2Node::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPt
   if (!filter_ || !map_loaded_) {
     return;
   }
+  scan_receive_ = true;
   auto t_start = std::chrono::steady_clock::now();
 
   updateWithOdometry();
