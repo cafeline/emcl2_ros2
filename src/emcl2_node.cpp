@@ -217,17 +217,7 @@ void EMcl2Node::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPt
   PointCloudObservation observation;
   observation.sensor_offset = observation_template_.sensor_offset;
   observation.sensor_rotation = observation_template_.sensor_rotation;
-  rclcpp::Time cloud_stamp(msg->header.stamp);
-  if (cloud_stamp.nanoseconds() == 0) {
-    cloud_stamp = this->now();
-    if (cloud_stamp.nanoseconds() == 0) {
-      cloud_stamp = rclcpp::Clock(RCL_SYSTEM_TIME).now();
-    }
-    RCLCPP_WARN_THROTTLE(
-      get_logger(), *this->get_clock(), 2000,
-      "PointCloud stamp was 0; replaced with current node time %.3f s",
-      cloud_stamp.seconds());
-  }
+  const auto cloud_stamp = msg->header.stamp;
   double dummy_var_x = 0.0;
   double dummy_var_y = 0.0;
   double dummy_var_yaw = 0.0;
@@ -270,7 +260,7 @@ void EMcl2Node::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPt
   const auto & filtered_points_ref = observation.points;
 
   if (true) {
-    // TODO(ryo): re-enable filtered_cloud_pub_ gate when topic toggle is used.
+  // if (filtered_cloud_pub_) {
     try {
       const auto transform = tf_buffer_->lookupTransform(
         map_frame_id_, msg->header.frame_id, tf2::TimePointZero);
@@ -492,31 +482,19 @@ void EMcl2Node::publishOutputs(const rclcpp::Time & stamp)
     return;
   }
 
-  rclcpp::Time effective_stamp = stamp;
-  if (effective_stamp.nanoseconds() == 0) {
-    effective_stamp = this->now();
-    if (effective_stamp.nanoseconds() == 0) {
-      effective_stamp = rclcpp::Clock(RCL_SYSTEM_TIME).now();
-    }
-    RCLCPP_WARN_THROTTLE(
-      get_logger(), *this->get_clock(), 2000,
-      "Output stamp was 0; replaced with current node time %.3f s",
-      effective_stamp.seconds());
-  }
-
   double var_x = 0.0;
   double var_y = 0.0;
   double var_yaw = 0.0;
   Pose mean_pose = computeWeightedMean(var_x, var_y, var_yaw);
 
-  auto pose_msg = buildPoseMessage(mean_pose, var_x, var_y, var_yaw, effective_stamp);
+  auto pose_msg = buildPoseMessage(mean_pose, var_x, var_y, var_yaw, stamp);
   pose_pub_->publish(pose_msg);
 
-  auto cloud_msg = buildParticleArray(effective_stamp);
+  auto cloud_msg = buildParticleArray(stamp);
   particle_pub_->publish(cloud_msg);
 
   geometry_msgs::msg::TransformStamped tf_msg;
-  tf_msg.header.stamp = effective_stamp;
+  tf_msg.header.stamp = stamp;
   tf_msg.header.frame_id = map_frame_id_;
   tf_msg.child_frame_id = odom_frame_id_;
 
