@@ -23,7 +23,6 @@ set(EMCL2_CORE_SOURCES
   src/Particle.cpp
   src/Mcl.cpp
   src/OdomModel.cpp
-  src/PointCloudHeightFilter.cpp
   src/emcl2_node.cpp
 )
 
@@ -99,12 +98,6 @@ if(BUILD_TESTING)
     ${HDF5_HL_LIBRARIES}
   )
 
-  ament_add_gtest(test_pointcloud_height_filter
-    test/test_pointcloud_height_filter.cpp
-  )
-  target_link_libraries(test_pointcloud_height_filter
-    emcl2_core
-  )
 endif()
 
 install(PROGRAMS

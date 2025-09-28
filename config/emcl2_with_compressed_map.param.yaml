@@ -30,18 +30,3 @@
     laser_max_range: 100000000.0
     alpha_threshold: 0.0
     sensor_reset: false
-    height_filter:
-      default_z_min: -1.0
-      default_z_max: 5.0
-      publish_filtered_pointcloud: true
-      filtered_pointcloud_topic: "/emcl2/filtered_pointcloud"
-      region_names:
-        - mile1_section
-      regions:
-        mile1_section:
-          x_min: -50.0
-          x_max: 50.0
-          y_min: -50.0
-          y_max: 50.0
-          z_min: -10.3
-          z_max: 10.6
