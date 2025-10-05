@@ -122,8 +122,6 @@ inline std::string create_basic_hdf5_map(const std::string & filename)
   hid_t compressed = H5Gcreate2(file, "/compressed_data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   const uint8_t block_indices[1] = {1};
   write_array_uint8(compressed, "block_indices", block_indices, 1);
-  const int32_t block_offset[3] = {0, 0, 0};
-  write_array_int32(compressed, "block_offset", block_offset, 3);
   const int32_t block_dims[3] = {1, 1, 1};
   write_array_int32(compressed, "block_dims", block_dims, 3);
   H5Gclose(compressed);
@@ -157,12 +155,10 @@ inline std::string create_offset_hdf5_map(const std::string & filename)
 
   hid_t compressed = H5Gcreate2(file, "/compressed_data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   const uint8_t block_indices[2] = {
-    0,
-    1
+    1,
+    0
   };
   write_array_uint8(compressed, "block_indices", block_indices, 2);
-  const int32_t block_offset[3] = {-1, 0, 0};
-  write_array_int32(compressed, "block_offset", block_offset, 3);
   const int32_t block_dims[3] = {2, 1, 1};
   write_array_int32(compressed, "block_dims", block_dims, 3);
   H5Gclose(compressed);

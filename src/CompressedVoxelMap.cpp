@@ -2,6 +2,7 @@
 
 #include <hdf5.h>
 
+#include <iostream>
 #include <cmath>
 #include <stdexcept>
 #include <vector>
@@ -76,8 +77,8 @@ bool CompressedVoxelMap::loadFromFile(const std::string & path)
   const auto reset_state = [&]() {
       block_indices_.clear();
       voxel_size_ = 0.0;
+      inv_voxel_size_ = 0.0;
       block_size_ = 0;
-      block_offset_ = Eigen::Vector3i::Zero();
       block_dims_ = Eigen::Vector3i::Zero();
       stride_y_ = 0;
       stride_z_ = 0;
@@ -105,6 +106,7 @@ bool CompressedVoxelMap::loadFromFile(const std::string & path)
       throw std::runtime_error("voxel_size missing");
     }
     voxel_size_ = static_cast<double>(voxel_size_f);
+    inv_voxel_size_ = voxel_size_ > 0.0 ? 1.0 / voxel_size_ : 0.0;
 
     uint32_t block_size_u = 0;
     if (!readScalar(compression, "block_size", H5T_NATIVE_UINT32, &block_size_u)) {
@@ -139,19 +141,6 @@ bool CompressedVoxelMap::loadFromFile(const std::string & path)
     if (compressed < 0) {
       throw std::runtime_error("compressed_data group missing");
     }
-
-    std::vector<uint8_t> offset_buffer;
-    std::vector<hsize_t> offset_shape;
-    if (!readDataset(compressed, "block_offset", H5T_NATIVE_INT32, offset_buffer, offset_shape)) {
-      H5Gclose(compressed);
-      throw std::runtime_error("block_offset dataset missing");
-    }
-    if (offset_shape.size() != 1 || offset_shape[0] != 3) {
-      H5Gclose(compressed);
-      throw std::runtime_error("block_offset invalid shape");
-    }
-    const int32_t * offset_ptr = reinterpret_cast<const int32_t *>(offset_buffer.data());
-    block_offset_ = Eigen::Vector3i(offset_ptr[0], offset_ptr[1], offset_ptr[2]);
 
     std::vector<uint8_t> dims_buffer;
     std::vector<hsize_t> dims_shape_vec;
@@ -239,39 +228,46 @@ bool CompressedVoxelMap::isOccupied(double x, double y, double z) const
     return false;
   }
 
-  Eigen::Vector3d rel(x - origin_.x(), y - origin_.y(), z - origin_.z());
-  const double inv = 1.0 / voxel_size_;
+  const Eigen::Vector3d rel(x - origin_.x(), y - origin_.y(), z - origin_.z());
 
-  int64_t voxel_x = static_cast<int64_t>(std::floor(rel.x() * inv));
-  int64_t voxel_y = static_cast<int64_t>(std::floor(rel.y() * inv));
-  int64_t voxel_z = static_cast<int64_t>(std::floor(rel.z() * inv));
+  const auto fast_floor = [](double value) -> int64_t {
+      int64_t truncated = static_cast<int64_t>(value);
+      if (value < static_cast<double>(truncated)) {
+        --truncated;
+      }
+      return truncated;
+    };
+
+  const double inv = inv_voxel_size_;
+  const int64_t voxel_x = fast_floor(rel.x() * inv);
+  const int64_t voxel_y = fast_floor(rel.y() * inv);
+  const int64_t voxel_z = fast_floor(rel.z() * inv);
 
   const int64_t block_size_ll = static_cast<int64_t>(block_size_);
-  const double block_size_d = static_cast<double>(block_size_ll);
+  const auto floor_div = [](int64_t numerator, int64_t denominator) -> int64_t {
+      int64_t quotient = numerator / denominator;
+      int64_t remainder = numerator % denominator;
+      if (remainder < 0) {
+        --quotient;
+      }
+      return quotient;
+    };
 
-  int64_t block_x = static_cast<int64_t>(std::floor(static_cast<double>(voxel_x) / block_size_d));
-  int64_t block_y = static_cast<int64_t>(std::floor(static_cast<double>(voxel_y) / block_size_d));
-  int64_t block_z = static_cast<int64_t>(std::floor(static_cast<double>(voxel_z) / block_size_d));
+  const int64_t block_x = floor_div(voxel_x, block_size_ll);
+  const int64_t block_y = floor_div(voxel_y, block_size_ll);
+  const int64_t block_z = floor_div(voxel_z, block_size_ll);
 
-  const int64_t idx_x = block_x - static_cast<int64_t>(block_offset_.x());
-  const int64_t idx_y = block_y - static_cast<int64_t>(block_offset_.y());
-  const int64_t idx_z = block_z - static_cast<int64_t>(block_offset_.z());
+  const std::size_t ux = static_cast<std::size_t>(block_x);
+  const std::size_t uy = static_cast<std::size_t>(block_y);
+  const std::size_t uz = static_cast<std::size_t>(block_z);
 
-  if (idx_x < 0 || idx_y < 0 || idx_z < 0 ||
-    idx_x >= block_dims_.x() || idx_y >= block_dims_.y() || idx_z >= block_dims_.z())
-  {
-    return false;
-  }
-
-  const std::size_t linear_index = static_cast<std::size_t>(idx_x) +
-    stride_y_ * static_cast<std::size_t>(idx_y) +
-    stride_z_ * static_cast<std::size_t>(idx_z);
+  const std::size_t linear_index = ux + stride_y_ * uy + stride_z_ * uz;
 
   if (linear_index >= block_indices_.size()) {
     return false;
   }
 
-  return block_indices_[linear_index] != 0;
+  return block_indices_[linear_index];
 }
 
 bool CompressedVoxelMap::isOccupied(const Eigen::Vector3d & position) const

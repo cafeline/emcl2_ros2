@@ -6,7 +6,7 @@
     base_frame_id: "base_link"
     footprint_frame_id: "base_footprint"
     pointcloud_topic: "/livox/lidar"
-    map_hdf5_path: "/home/ryo/raspicat_ws/src/maps/tsudanuma_voxelsize_015_compressed_map.h5"
+    map_hdf5_path: "/home/ryo/raspicat_ws/src/maps/tsudanuma_voxelsize_01_compressed_map.h5"
     transform_tolerance: 0.2
     odom_freq: 20
     num_particles: 100

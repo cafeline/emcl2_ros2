@@ -16,6 +16,7 @@ def generate_launch_description():
     hardcoded_map_yaml = '/home/ryo/raspicat_ws/src/maps/mile1_2_50.yaml'
     use_sim_time = LaunchConfiguration('use_sim_time')
     cutter_params_file = LaunchConfiguration('cutter_params_file')
+    cutter_regions_file = LaunchConfiguration('cutter_regions_file')
 
     # map の Launch 引数は不要になったため削除（再利用したい場合は復活させてください）
     declare_use_sim_time = DeclareLaunchArgument(
@@ -34,8 +35,15 @@ def generate_launch_description():
         default_value=os.path.join(
             get_package_share_directory('pointcloud2_cutter'),
             'config',
-            'tsudanuma.param.yaml'),
+            'pointcloud2_cutter.param.yaml'),
         description='pointcloud2_cutter param file path')
+    declare_cutter_regions = DeclareLaunchArgument(
+        'cutter_regions_file',
+        default_value=os.path.join(
+            get_package_share_directory('pointcloud2_cutter'),
+            'config',
+            'tsudanuma_regions.yaml'),
+        description='pointcloud2_cutter regions file path')
 
     lifecycle_nodes = ['map_server']
 
@@ -58,7 +66,10 @@ def generate_launch_description():
                 package='pointcloud2_cutter',
                 executable='pointcloud2_cutter_node',
                 name='pointcloud2_cutter',
-                parameters=[cutter_params_file],
+                parameters=[
+                    cutter_params_file,
+                    {'regions_config_path': cutter_regions_file}
+                ],
                 output='screen'),
             Node(
                 name='emcl2',
@@ -81,6 +92,7 @@ def generate_launch_description():
     ld.add_action(declare_use_sim_time)
     ld.add_action(declare_params_file)
     ld.add_action(declare_cutter_params)
+    ld.add_action(declare_cutter_regions)
 
     ld.add_action(launch_node)
 
