@@ -3,7 +3,6 @@
 #include <hdf5.h>
 
 #include <cmath>
-#include <limits>
 #include <stdexcept>
 #include <vector>
 
@@ -75,16 +74,11 @@ bool readDataset(
 bool CompressedVoxelMap::loadFromFile(const std::string & path)
 {
   const auto reset_state = [&]() {
-      dictionary_patterns_.clear();
       block_indices_.clear();
       voxel_size_ = 0.0;
       block_size_ = 0;
-      pattern_length_ = 0;
-      pattern_bytes_ = 0;
       block_offset_ = Eigen::Vector3i::Zero();
       block_dims_ = Eigen::Vector3i::Zero();
-      block_index_sentinel_ = 0;
-      block_index_bit_width_ = 0;
       stride_y_ = 0;
       stride_z_ = 0;
     };
@@ -119,19 +113,6 @@ bool CompressedVoxelMap::loadFromFile(const std::string & path)
     }
     block_size_ = static_cast<int>(block_size_u);
 
-    uint32_t pattern_bits_u = 0;
-    if (!readScalar(compression, "pattern_bits", H5T_NATIVE_UINT32, &pattern_bits_u)) {
-      H5Gclose(compression);
-      throw std::runtime_error("pattern_bits missing");
-    }
-    pattern_length_ = static_cast<int>(pattern_bits_u);
-    pattern_bytes_ = (pattern_length_ + 7) / 8;
-
-    uint32_t block_index_bits_u = 0;
-    if (readScalar(compression, "block_index_bit_width", H5T_NATIVE_UINT32, &block_index_bits_u)) {
-      block_index_bit_width_ = static_cast<uint8_t>(block_index_bits_u);
-    }
-
     std::vector<uint8_t> origin_buffer;
     std::vector<hsize_t> origin_shape;
     if (!readDataset(
@@ -153,130 +134,10 @@ bool CompressedVoxelMap::loadFromFile(const std::string & path)
 
     H5Gclose(compression);
 
-    // dictionary
-    hid_t dictionary = H5Gopen2(file, "/dictionary", H5P_DEFAULT);
-    if (dictionary < 0) {
-      throw std::runtime_error("dictionary group missing");
-    }
-
-    uint32_t pattern_length_u = 0;
-    if (!readScalar(dictionary, "pattern_length", H5T_NATIVE_UINT32, &pattern_length_u)) {
-      H5Gclose(dictionary);
-      throw std::runtime_error("pattern_length missing");
-    }
-    pattern_length_ = static_cast<int>(pattern_length_u);
-    pattern_bytes_ = (pattern_length_ + 7) / 8;
-
-    std::vector<uint8_t> pattern_buffer;
-    std::vector<hsize_t> pattern_shape;
-    if (!readDataset(dictionary, "patterns", H5T_NATIVE_UCHAR, pattern_buffer, pattern_shape)) {
-      H5Gclose(dictionary);
-      throw std::runtime_error("patterns dataset missing");
-    }
-    if (pattern_bytes_ <= 0) {
-      H5Gclose(dictionary);
-      throw std::runtime_error("pattern bytes invalid");
-    }
-    if (pattern_buffer.empty() ||
-      pattern_buffer.size() % static_cast<std::size_t>(pattern_bytes_) != 0)
-    {
-      H5Gclose(dictionary);
-      throw std::runtime_error("patterns size mismatch");
-    }
-    dictionary_patterns_.assign(pattern_buffer.begin(), pattern_buffer.end());
-    H5Gclose(dictionary);
-
     // compressed data
     hid_t compressed = H5Gopen2(file, "/compressed_data", H5P_DEFAULT);
     if (compressed < 0) {
       throw std::runtime_error("compressed_data group missing");
-    }
-
-    hid_t indices_dataset = H5Dopen2(compressed, "block_indices", H5P_DEFAULT);
-    if (indices_dataset < 0) {
-      H5Gclose(compressed);
-      throw std::runtime_error("block_indices dataset missing");
-    }
-    hid_t indices_space = H5Dget_space(indices_dataset);
-    if (indices_space < 0) {
-      H5Dclose(indices_dataset);
-      H5Gclose(compressed);
-      throw std::runtime_error("block_indices dataspace missing");
-    }
-    int ndims = H5Sget_simple_extent_ndims(indices_space);
-    if (ndims != 1) {
-      H5Sclose(indices_space);
-      H5Dclose(indices_dataset);
-      H5Gclose(compressed);
-      throw std::runtime_error("block_indices invalid rank");
-    }
-    hsize_t dims[1];
-    H5Sget_simple_extent_dims(indices_space, dims, nullptr);
-    const std::size_t total_blocks = static_cast<std::size_t>(dims[0]);
-    if (total_blocks == 0) {
-      H5Sclose(indices_space);
-      H5Dclose(indices_dataset);
-      H5Gclose(compressed);
-      throw std::runtime_error("block_indices empty");
-    }
-
-    hid_t indices_type = H5Dget_type(indices_dataset);
-    const std::size_t element_size = static_cast<std::size_t>(H5Tget_size(indices_type));
-
-    block_indices_.assign(total_blocks, 0);
-    herr_t status = -1;
-    if (element_size == sizeof(uint8_t)) {
-      std::vector<uint8_t> tmp(total_blocks, 0);
-      status =
-        H5Dread(indices_dataset, H5T_NATIVE_UINT8, H5S_ALL, H5S_ALL, H5P_DEFAULT, tmp.data());
-      if (status >= 0) {
-        for (std::size_t i = 0; i < total_blocks; ++i) {
-          block_indices_[i] = static_cast<uint64_t>(tmp[i]);
-        }
-        if (block_index_bit_width_ == 0) {
-          block_index_bit_width_ = 8;
-        }
-      }
-    } else if (element_size == sizeof(uint16_t)) {
-      std::vector<uint16_t> tmp(total_blocks, 0);
-      status =
-        H5Dread(indices_dataset, H5T_NATIVE_UINT16, H5S_ALL, H5S_ALL, H5P_DEFAULT, tmp.data());
-      if (status >= 0) {
-        for (std::size_t i = 0; i < total_blocks; ++i) {
-          block_indices_[i] = static_cast<uint64_t>(tmp[i]);
-        }
-        if (block_index_bit_width_ == 0) {
-          block_index_bit_width_ = 16;
-        }
-      }
-    } else if (element_size == sizeof(uint32_t)) {
-      std::vector<uint32_t> tmp(total_blocks, 0);
-      status =
-        H5Dread(indices_dataset, H5T_NATIVE_UINT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, tmp.data());
-      if (status >= 0) {
-        for (std::size_t i = 0; i < total_blocks; ++i) {
-          block_indices_[i] = static_cast<uint64_t>(tmp[i]);
-        }
-        if (block_index_bit_width_ == 0) {
-          block_index_bit_width_ = 32;
-        }
-      }
-    } else if (element_size == sizeof(uint64_t)) {
-      status = H5Dread(
-        indices_dataset, H5T_NATIVE_UINT64, H5S_ALL, H5S_ALL, H5P_DEFAULT,
-        block_indices_.data());
-      if (status >= 0 && block_index_bit_width_ == 0) {
-        block_index_bit_width_ = 64;
-      }
-    }
-
-    H5Tclose(indices_type);
-    H5Sclose(indices_space);
-    H5Dclose(indices_dataset);
-
-    if (status < 0) {
-      H5Gclose(compressed);
-      throw std::runtime_error("failed to read block_indices");
     }
 
     std::vector<uint8_t> offset_buffer;
@@ -304,35 +165,60 @@ bool CompressedVoxelMap::loadFromFile(const std::string & path)
     }
     const int32_t * dims_ptr = reinterpret_cast<const int32_t *>(dims_buffer.data());
     block_dims_ = Eigen::Vector3i(dims_ptr[0], dims_ptr[1], dims_ptr[2]);
-
-    H5Gclose(compressed);
-
     if (block_dims_.x() <= 0 || block_dims_.y() <= 0 || block_dims_.z() <= 0) {
+      H5Gclose(compressed);
       throw std::runtime_error("block_dims must be positive");
     }
 
+    stride_y_ = static_cast<std::size_t>(block_dims_.x());
+    stride_z_ = static_cast<std::size_t>(block_dims_.x()) *
+      static_cast<std::size_t>(block_dims_.y());
     const std::size_t expected_total = static_cast<std::size_t>(block_dims_.x()) *
       static_cast<std::size_t>(block_dims_.y()) *
       static_cast<std::size_t>(block_dims_.z());
 
-    if (expected_total != block_indices_.size()) {
+    hid_t indices_dataset = H5Dopen2(compressed, "block_indices", H5P_DEFAULT);
+    if (indices_dataset < 0) {
+      H5Gclose(compressed);
+      throw std::runtime_error("block_indices dataset missing");
+    }
+    hid_t indices_space = H5Dget_space(indices_dataset);
+    if (indices_space < 0) {
+      H5Dclose(indices_dataset);
+      H5Gclose(compressed);
+      throw std::runtime_error("block_indices dataspace missing");
+    }
+    int ndims = H5Sget_simple_extent_ndims(indices_space);
+    if (ndims != 1) {
+      H5Sclose(indices_space);
+      H5Dclose(indices_dataset);
+      H5Gclose(compressed);
+      throw std::runtime_error("block_indices invalid rank");
+    }
+    hsize_t dims[1];
+    H5Sget_simple_extent_dims(indices_space, dims, nullptr);
+    const std::size_t total_blocks = static_cast<std::size_t>(dims[0]);
+    if (total_blocks == 0 || total_blocks != expected_total) {
+      H5Sclose(indices_space);
+      H5Dclose(indices_dataset);
+      H5Gclose(compressed);
       throw std::runtime_error("block_indices size mismatch");
     }
 
-    stride_y_ = static_cast<int64_t>(block_dims_.x());
-    stride_z_ = static_cast<int64_t>(block_dims_.x()) * static_cast<int64_t>(block_dims_.y());
+    block_indices_.assign(total_blocks, 0);
+    herr_t status = H5Dread(
+      indices_dataset, H5T_NATIVE_UINT8, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+      block_indices_.data());
 
-    if (block_index_bit_width_ != 8 && block_index_bit_width_ != 16 &&
-      block_index_bit_width_ != 32 && block_index_bit_width_ != 64)
-    {
-      throw std::runtime_error("unsupported block index bit width");
+    H5Sclose(indices_space);
+    H5Dclose(indices_dataset);
+
+    if (status < 0) {
+      H5Gclose(compressed);
+      throw std::runtime_error("failed to read block_indices");
     }
 
-    if (block_index_bit_width_ == 64) {
-      block_index_sentinel_ = std::numeric_limits<uint64_t>::max();
-    } else {
-      block_index_sentinel_ = (1ULL << block_index_bit_width_) - 1ULL;
-    }
+    H5Gclose(compressed);
 
   } catch (const std::exception &) {
     ok = false;
@@ -344,15 +230,12 @@ bool CompressedVoxelMap::loadFromFile(const std::string & path)
     reset_state();
   }
 
-  return ok && voxel_size_ > 0.0 && block_size_ > 0 && pattern_bytes_ > 0 &&
-         !dictionary_patterns_.empty() && !block_indices_.empty();
+  return ok && voxel_size_ > 0.0 && block_size_ > 0 && !block_indices_.empty();
 }
 
 bool CompressedVoxelMap::isOccupied(double x, double y, double z) const
 {
-  if (voxel_size_ <= 0.0 || block_size_ <= 0 || dictionary_patterns_.empty() ||
-    block_indices_.empty())
-  {
+  if (voxel_size_ <= 0.0 || block_size_ <= 0 || block_indices_.empty()) {
     return false;
   }
 
@@ -381,44 +264,14 @@ bool CompressedVoxelMap::isOccupied(double x, double y, double z) const
   }
 
   const std::size_t linear_index = static_cast<std::size_t>(idx_x) +
-    static_cast<std::size_t>(stride_y_) * static_cast<std::size_t>(idx_y) +
-    static_cast<std::size_t>(stride_z_) * static_cast<std::size_t>(idx_z);
+    stride_y_ * static_cast<std::size_t>(idx_y) +
+    stride_z_ * static_cast<std::size_t>(idx_z);
 
   if (linear_index >= block_indices_.size()) {
     return false;
   }
 
-  const uint64_t pattern_index = block_indices_[linear_index];
-  if (pattern_index == block_index_sentinel_) {
-    return false;
-  }
-
-  const std::size_t offset = static_cast<std::size_t>(pattern_index) *
-    static_cast<std::size_t>(pattern_bytes_);
-  if (offset + static_cast<std::size_t>(pattern_bytes_) > dictionary_patterns_.size()) {
-    return false;
-  }
-
-  const int local_x = static_cast<int>(voxel_x - block_x * block_size_ll);
-  const int local_y = static_cast<int>(voxel_y - block_y * block_size_ll);
-  const int local_z = static_cast<int>(voxel_z - block_z * block_size_ll);
-
-  if (local_x < 0 || local_x >= block_size_ || local_y < 0 || local_y >= block_size_ ||
-    local_z < 0 || local_z >= block_size_)
-  {
-    return false;
-  }
-
-  const int bit_index = local_z * block_size_ * block_size_ + local_y * block_size_ + local_x;
-  const int byte_index = bit_index / 8;
-  const int bit_in_byte = bit_index % 8;
-
-  if (byte_index < 0 || byte_index >= pattern_bytes_) {
-    return false;
-  }
-
-  const std::uint8_t * pattern = dictionary_patterns_.data() + offset;
-  return (pattern[static_cast<std::size_t>(byte_index)] >> bit_in_byte) & 0x1;
+  return block_indices_[linear_index] != 0;
 }
 
 bool CompressedVoxelMap::isOccupied(const Eigen::Vector3d & position) const

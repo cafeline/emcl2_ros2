@@ -26,16 +26,11 @@ private:
     double voxel_size_ {0.0};
     int block_size_ {0};
     Eigen::Vector3d origin_ {Eigen::Vector3d::Zero()};
-    int pattern_length_ {0};
-    int pattern_bytes_ {0};
-    std::vector < std::uint8_t > dictionary_patterns_;
     Eigen::Vector3i block_offset_ {Eigen::Vector3i::Zero()};
     Eigen::Vector3i block_dims_ {Eigen::Vector3i::Zero()};
-    std::vector < std::uint64_t > block_indices_;
-    uint64_t block_index_sentinel_ {0};
-    uint8_t block_index_bit_width_ {0};
-    int64_t stride_y_ {0};
-    int64_t stride_z_ {0};
+    std::vector < std::uint8_t > block_indices_;
+    std::size_t stride_y_ {0};
+    std::size_t stride_z_ {0};
   };
 
 }  // namespace emcl2
