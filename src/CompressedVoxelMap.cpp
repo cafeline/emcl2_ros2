@@ -3,6 +3,7 @@
 #include <hdf5.h>
 
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <vector>
 
@@ -73,12 +74,22 @@ bool readDataset(
 
 bool CompressedVoxelMap::loadFromFile(const std::string & path)
 {
-  block_to_pattern_.clear();
-  dictionary_patterns_.clear();
-  voxel_size_ = 0.0;
-  block_size_ = 0;
-  pattern_length_ = 0;
-  pattern_bytes_ = 0;
+  const auto reset_state = [&]() {
+      dictionary_patterns_.clear();
+      block_indices_.clear();
+      voxel_size_ = 0.0;
+      block_size_ = 0;
+      pattern_length_ = 0;
+      pattern_bytes_ = 0;
+      block_offset_ = Eigen::Vector3i::Zero();
+      block_dims_ = Eigen::Vector3i::Zero();
+      block_index_sentinel_ = 0;
+      block_index_bit_width_ = 0;
+      stride_y_ = 0;
+      stride_z_ = 0;
+    };
+
+  reset_state();
 
   hid_t file = H5Fopen(path.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
   if (file < 0) {
@@ -115,6 +126,11 @@ bool CompressedVoxelMap::loadFromFile(const std::string & path)
     }
     pattern_length_ = static_cast<int>(pattern_bits_u);
     pattern_bytes_ = (pattern_length_ + 7) / 8;
+
+    uint32_t block_index_bits_u = 0;
+    if (readScalar(compression, "block_index_bit_width", H5T_NATIVE_UINT32, &block_index_bits_u)) {
+      block_index_bit_width_ = static_cast<uint8_t>(block_index_bits_u);
+    }
 
     std::vector<uint8_t> origin_buffer;
     std::vector<hsize_t> origin_shape;
@@ -176,45 +192,148 @@ bool CompressedVoxelMap::loadFromFile(const std::string & path)
       throw std::runtime_error("compressed_data group missing");
     }
 
-    std::vector<uint8_t> indices_buffer;
-    std::vector<hsize_t> indices_shape;
-    if (!readDataset(compressed, "indices", H5T_NATIVE_UINT16, indices_buffer, indices_shape)) {
+    hid_t indices_dataset = H5Dopen2(compressed, "block_indices", H5P_DEFAULT);
+    if (indices_dataset < 0) {
       H5Gclose(compressed);
-      throw std::runtime_error("indices dataset missing");
+      throw std::runtime_error("block_indices dataset missing");
     }
-    if (indices_shape.size() != 1) {
+    hid_t indices_space = H5Dget_space(indices_dataset);
+    if (indices_space < 0) {
+      H5Dclose(indices_dataset);
       H5Gclose(compressed);
-      throw std::runtime_error("indices invalid shape");
+      throw std::runtime_error("block_indices dataspace missing");
     }
-    std::size_t num_blocks = indices_shape[0];
-    block_to_pattern_.clear();
-    block_to_pattern_.reserve(num_blocks);
+    int ndims = H5Sget_simple_extent_ndims(indices_space);
+    if (ndims != 1) {
+      H5Sclose(indices_space);
+      H5Dclose(indices_dataset);
+      H5Gclose(compressed);
+      throw std::runtime_error("block_indices invalid rank");
+    }
+    hsize_t dims[1];
+    H5Sget_simple_extent_dims(indices_space, dims, nullptr);
+    const std::size_t total_blocks = static_cast<std::size_t>(dims[0]);
+    if (total_blocks == 0) {
+      H5Sclose(indices_space);
+      H5Dclose(indices_dataset);
+      H5Gclose(compressed);
+      throw std::runtime_error("block_indices empty");
+    }
 
-    const uint16_t * indices_ptr = reinterpret_cast<const uint16_t *>(indices_buffer.data());
+    hid_t indices_type = H5Dget_type(indices_dataset);
+    const std::size_t element_size = static_cast<std::size_t>(H5Tget_size(indices_type));
 
-    std::vector<uint8_t> positions_buffer;
-    std::vector<hsize_t> positions_shape;
-    if (!readDataset(
-        compressed, "voxel_positions", H5T_NATIVE_INT32, positions_buffer,
-        positions_shape))
-    {
-      H5Gclose(compressed);
-      throw std::runtime_error("voxel_positions dataset missing");
+    block_indices_.assign(total_blocks, 0);
+    herr_t status = -1;
+    if (element_size == sizeof(uint8_t)) {
+      std::vector<uint8_t> tmp(total_blocks, 0);
+      status =
+        H5Dread(indices_dataset, H5T_NATIVE_UINT8, H5S_ALL, H5S_ALL, H5P_DEFAULT, tmp.data());
+      if (status >= 0) {
+        for (std::size_t i = 0; i < total_blocks; ++i) {
+          block_indices_[i] = static_cast<uint64_t>(tmp[i]);
+        }
+        if (block_index_bit_width_ == 0) {
+          block_index_bit_width_ = 8;
+        }
+      }
+    } else if (element_size == sizeof(uint16_t)) {
+      std::vector<uint16_t> tmp(total_blocks, 0);
+      status =
+        H5Dread(indices_dataset, H5T_NATIVE_UINT16, H5S_ALL, H5S_ALL, H5P_DEFAULT, tmp.data());
+      if (status >= 0) {
+        for (std::size_t i = 0; i < total_blocks; ++i) {
+          block_indices_[i] = static_cast<uint64_t>(tmp[i]);
+        }
+        if (block_index_bit_width_ == 0) {
+          block_index_bit_width_ = 16;
+        }
+      }
+    } else if (element_size == sizeof(uint32_t)) {
+      std::vector<uint32_t> tmp(total_blocks, 0);
+      status =
+        H5Dread(indices_dataset, H5T_NATIVE_UINT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, tmp.data());
+      if (status >= 0) {
+        for (std::size_t i = 0; i < total_blocks; ++i) {
+          block_indices_[i] = static_cast<uint64_t>(tmp[i]);
+        }
+        if (block_index_bit_width_ == 0) {
+          block_index_bit_width_ = 32;
+        }
+      }
+    } else if (element_size == sizeof(uint64_t)) {
+      status = H5Dread(
+        indices_dataset, H5T_NATIVE_UINT64, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+        block_indices_.data());
+      if (status >= 0 && block_index_bit_width_ == 0) {
+        block_index_bit_width_ = 64;
+      }
     }
-    if (positions_shape.size() != 2 || positions_shape[0] != num_blocks ||
-      positions_shape[1] != 3)
-    {
-      H5Gclose(compressed);
-      throw std::runtime_error("voxel_positions shape mismatch");
-    }
-    const int32_t * positions_ptr = reinterpret_cast<const int32_t *>(positions_buffer.data());
 
-    for (std::size_t i = 0; i < num_blocks; ++i) {
-      BlockCoord coord{positions_ptr[i * 3 + 0], positions_ptr[i * 3 + 1],
-        positions_ptr[i * 3 + 2]};
-      block_to_pattern_[coord] = indices_ptr[i];
+    H5Tclose(indices_type);
+    H5Sclose(indices_space);
+    H5Dclose(indices_dataset);
+
+    if (status < 0) {
+      H5Gclose(compressed);
+      throw std::runtime_error("failed to read block_indices");
     }
+
+    std::vector<uint8_t> offset_buffer;
+    std::vector<hsize_t> offset_shape;
+    if (!readDataset(compressed, "block_offset", H5T_NATIVE_INT32, offset_buffer, offset_shape)) {
+      H5Gclose(compressed);
+      throw std::runtime_error("block_offset dataset missing");
+    }
+    if (offset_shape.size() != 1 || offset_shape[0] != 3) {
+      H5Gclose(compressed);
+      throw std::runtime_error("block_offset invalid shape");
+    }
+    const int32_t * offset_ptr = reinterpret_cast<const int32_t *>(offset_buffer.data());
+    block_offset_ = Eigen::Vector3i(offset_ptr[0], offset_ptr[1], offset_ptr[2]);
+
+    std::vector<uint8_t> dims_buffer;
+    std::vector<hsize_t> dims_shape_vec;
+    if (!readDataset(compressed, "block_dims", H5T_NATIVE_INT32, dims_buffer, dims_shape_vec)) {
+      H5Gclose(compressed);
+      throw std::runtime_error("block_dims dataset missing");
+    }
+    if (dims_shape_vec.size() != 1 || dims_shape_vec[0] != 3) {
+      H5Gclose(compressed);
+      throw std::runtime_error("block_dims invalid shape");
+    }
+    const int32_t * dims_ptr = reinterpret_cast<const int32_t *>(dims_buffer.data());
+    block_dims_ = Eigen::Vector3i(dims_ptr[0], dims_ptr[1], dims_ptr[2]);
+
     H5Gclose(compressed);
+
+    if (block_dims_.x() <= 0 || block_dims_.y() <= 0 || block_dims_.z() <= 0) {
+      throw std::runtime_error("block_dims must be positive");
+    }
+
+    const std::size_t expected_total = static_cast<std::size_t>(block_dims_.x()) *
+      static_cast<std::size_t>(block_dims_.y()) *
+      static_cast<std::size_t>(block_dims_.z());
+
+    if (expected_total != block_indices_.size()) {
+      throw std::runtime_error("block_indices size mismatch");
+    }
+
+    stride_y_ = static_cast<int64_t>(block_dims_.x());
+    stride_z_ = static_cast<int64_t>(block_dims_.x()) * static_cast<int64_t>(block_dims_.y());
+
+    if (block_index_bit_width_ != 8 && block_index_bit_width_ != 16 &&
+      block_index_bit_width_ != 32 && block_index_bit_width_ != 64)
+    {
+      throw std::runtime_error("unsupported block index bit width");
+    }
+
+    if (block_index_bit_width_ == 64) {
+      block_index_sentinel_ = std::numeric_limits<uint64_t>::max();
+    } else {
+      block_index_sentinel_ = (1ULL << block_index_bit_width_) - 1ULL;
+    }
+
   } catch (const std::exception &) {
     ok = false;
   }
@@ -222,73 +341,83 @@ bool CompressedVoxelMap::loadFromFile(const std::string & path)
   H5Fclose(file);
 
   if (!ok) {
-    block_to_pattern_.clear();
-    dictionary_patterns_.clear();
-    voxel_size_ = 0.0;
-    block_size_ = 0;
-    pattern_length_ = 0;
-    pattern_bytes_ = 0;
+    reset_state();
   }
 
-  return ok && voxel_size_ > 0.0 && block_size_ > 0 && !dictionary_patterns_.empty();
+  return ok && voxel_size_ > 0.0 && block_size_ > 0 && pattern_bytes_ > 0 &&
+         !dictionary_patterns_.empty() && !block_indices_.empty();
 }
 
 bool CompressedVoxelMap::isOccupied(double x, double y, double z) const
 {
-  if (voxel_size_ <= 0.0 || block_size_ <= 0 || dictionary_patterns_.empty()) {
+  if (voxel_size_ <= 0.0 || block_size_ <= 0 || dictionary_patterns_.empty() ||
+    block_indices_.empty())
+  {
     return false;
   }
 
   Eigen::Vector3d rel(x - origin_.x(), y - origin_.y(), z - origin_.z());
-  double inv = 1.0 / voxel_size_;
-  double vx_d = rel.x() * inv;
-  double vy_d = rel.y() * inv;
-  double vz_d = rel.z() * inv;
+  const double inv = 1.0 / voxel_size_;
 
-  int64_t voxel_x = static_cast<int64_t>(std::floor(vx_d));
-  int64_t voxel_y = static_cast<int64_t>(std::floor(vy_d));
-  int64_t voxel_z = static_cast<int64_t>(std::floor(vz_d));
+  int64_t voxel_x = static_cast<int64_t>(std::floor(rel.x() * inv));
+  int64_t voxel_y = static_cast<int64_t>(std::floor(rel.y() * inv));
+  int64_t voxel_z = static_cast<int64_t>(std::floor(rel.z() * inv));
 
-  int64_t block_size_ll = static_cast<int64_t>(block_size_);
+  const int64_t block_size_ll = static_cast<int64_t>(block_size_);
+  const double block_size_d = static_cast<double>(block_size_ll);
 
-  int64_t block_x = static_cast<int64_t>(std::floor(static_cast<double>(voxel_x) / block_size_ll));
-  int64_t block_y = static_cast<int64_t>(std::floor(static_cast<double>(voxel_y) / block_size_ll));
-  int64_t block_z = static_cast<int64_t>(std::floor(static_cast<double>(voxel_z) / block_size_ll));
+  int64_t block_x = static_cast<int64_t>(std::floor(static_cast<double>(voxel_x) / block_size_d));
+  int64_t block_y = static_cast<int64_t>(std::floor(static_cast<double>(voxel_y) / block_size_d));
+  int64_t block_z = static_cast<int64_t>(std::floor(static_cast<double>(voxel_z) / block_size_d));
 
-  BlockCoord coord{static_cast<int32_t>(block_x), static_cast<int32_t>(block_y),
-    static_cast<int32_t>(block_z)};
-  auto it = block_to_pattern_.find(coord);
-  if (it == block_to_pattern_.end()) {
+  const int64_t idx_x = block_x - static_cast<int64_t>(block_offset_.x());
+  const int64_t idx_y = block_y - static_cast<int64_t>(block_offset_.y());
+  const int64_t idx_z = block_z - static_cast<int64_t>(block_offset_.z());
+
+  if (idx_x < 0 || idx_y < 0 || idx_z < 0 ||
+    idx_x >= block_dims_.x() || idx_y >= block_dims_.y() || idx_z >= block_dims_.z())
+  {
     return false;
   }
 
-  std::uint16_t pattern_index = it->second;
-  std::size_t offset = static_cast<std::size_t>(pattern_index) *
+  const std::size_t linear_index = static_cast<std::size_t>(idx_x) +
+    static_cast<std::size_t>(stride_y_) * static_cast<std::size_t>(idx_y) +
+    static_cast<std::size_t>(stride_z_) * static_cast<std::size_t>(idx_z);
+
+  if (linear_index >= block_indices_.size()) {
+    return false;
+  }
+
+  const uint64_t pattern_index = block_indices_[linear_index];
+  if (pattern_index == block_index_sentinel_) {
+    return false;
+  }
+
+  const std::size_t offset = static_cast<std::size_t>(pattern_index) *
     static_cast<std::size_t>(pattern_bytes_);
   if (offset + static_cast<std::size_t>(pattern_bytes_) > dictionary_patterns_.size()) {
     return false;
   }
 
-  int local_x = static_cast<int>(voxel_x - block_x * block_size_ll);
-  int local_y = static_cast<int>(voxel_y - block_y * block_size_ll);
-  int local_z = static_cast<int>(voxel_z - block_z * block_size_ll);
+  const int local_x = static_cast<int>(voxel_x - block_x * block_size_ll);
+  const int local_y = static_cast<int>(voxel_y - block_y * block_size_ll);
+  const int local_z = static_cast<int>(voxel_z - block_z * block_size_ll);
 
   if (local_x < 0 || local_x >= block_size_ || local_y < 0 || local_y >= block_size_ ||
-    local_z < 0 ||
-    local_z >= block_size_)
+    local_z < 0 || local_z >= block_size_)
   {
     return false;
   }
 
-  int bit_index = local_z * block_size_ * block_size_ + local_y * block_size_ + local_x;
-  int byte_index = bit_index / 8;
-  int bit_in_byte = bit_index % 8;
+  const int bit_index = local_z * block_size_ * block_size_ + local_y * block_size_ + local_x;
+  const int byte_index = bit_index / 8;
+  const int bit_in_byte = bit_index % 8;
 
-  const std::uint8_t * pattern = dictionary_patterns_.data() + offset;
   if (byte_index < 0 || byte_index >= pattern_bytes_) {
     return false;
   }
 
+  const std::uint8_t * pattern = dictionary_patterns_.data() + offset;
   return (pattern[static_cast<std::size_t>(byte_index)] >> bit_in_byte) & 0x1;
 }
 

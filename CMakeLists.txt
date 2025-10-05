@@ -111,5 +111,4 @@ ament_auto_package(
   config
   launch
   test
-  USE_SCOPED_HEADER_INSTALL_DIR
 )

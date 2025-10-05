@@ -3,11 +3,9 @@
 
 #include <Eigen/Core>
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace emcl2 {
@@ -25,36 +23,19 @@ public:
     double voxelSize() const;
 
 private:
-    struct BlockCoord
-    {
-      int32_t x;
-      int32_t y;
-      int32_t z;
-
-      bool operator == (const BlockCoord & other) const
-      {
-        return x == other.x && y == other.y && z == other.z;
-      }
-    };
-
-    struct BlockCoordHash
-    {
-      std::size_t operator()(const BlockCoord & coord) const noexcept
-      {
-        std::size_t hx = static_cast < std::size_t > (coord.x) * 73856093u;
-        std::size_t hy = static_cast < std::size_t > (coord.y) * 19349663u;
-        std::size_t hz = static_cast < std::size_t > (coord.z) * 83492791u;
-        return hx ^ hy ^ hz;
-      }
-    };
-
     double voxel_size_ {0.0};
     int block_size_ {0};
     Eigen::Vector3d origin_ {Eigen::Vector3d::Zero()};
     int pattern_length_ {0};
     int pattern_bytes_ {0};
     std::vector < std::uint8_t > dictionary_patterns_;
-    std::unordered_map < BlockCoord, std::uint16_t, BlockCoordHash > block_to_pattern_;
+    Eigen::Vector3i block_offset_ {Eigen::Vector3i::Zero()};
+    Eigen::Vector3i block_dims_ {Eigen::Vector3i::Zero()};
+    std::vector < std::uint64_t > block_indices_;
+    uint64_t block_index_sentinel_ {0};
+    uint8_t block_index_bit_width_ {0};
+    int64_t stride_y_ {0};
+    int64_t stride_z_ {0};
   };
 
 }  // namespace emcl2

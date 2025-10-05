@@ -75,7 +75,7 @@ private:
 
     rclcpp::Subscription < sensor_msgs::msg::PointCloud2 > ::SharedPtr pointcloud_sub_;
     rclcpp::Subscription < geometry_msgs::msg::PoseWithCovarianceStamped > ::SharedPtr
-      initial_pose_sub_;
+    initial_pose_sub_;
     rclcpp::Publisher < geometry_msgs::msg::PoseArray > ::SharedPtr particle_pub_;
     rclcpp::Publisher < geometry_msgs::msg::PoseWithCovarianceStamped > ::SharedPtr pose_pub_;
 

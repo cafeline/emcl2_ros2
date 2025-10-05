@@ -16,3 +16,15 @@ TEST(CompressedVoxelMapTest, LoadAndQuery)
   EXPECT_TRUE(map.isOccupied(0.5, 0.5, 0.5));
   EXPECT_FALSE(map.isOccupied(3.0, 0.5, 0.5));
 }
+
+TEST(CompressedVoxelMapTest, LoadWithOffsetAndSentinel)
+{
+  const auto path = emcl2_test::create_offset_hdf5_map("emcl2_test_map_offset.h5");
+
+  emcl2::CompressedVoxelMap map;
+  ASSERT_TRUE(map.loadFromFile(path));
+
+  EXPECT_FALSE(map.isOccupied(-1.5, 0.5, 0.5));  // Sentinel block should be empty
+  EXPECT_TRUE(map.isOccupied(0.5, 0.5, 0.5));   // Populated block should be occupied
+  EXPECT_FALSE(map.isOccupied(5.0, 0.5, 0.5));  // Outside block grid
+}
