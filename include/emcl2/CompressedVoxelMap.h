@@ -28,7 +28,12 @@ private:
     int block_size_ {0};
     Eigen::Vector3d origin_ {Eigen::Vector3d::Zero()};
     Eigen::Vector3i block_dims_ {Eigen::Vector3i::Zero()};
-    std::vector < std::uint8_t > block_indices_;
+    std::size_t pattern_bits_ {0};
+    std::size_t pattern_bytes_ {0};
+    std::vector < std::uint8_t > dictionary_patterns_;
+    std::vector < std::uint32_t > block_indices_;
+    std::size_t dictionary_size_ {0};
+    std::uint8_t block_index_bit_width_ {1};
     std::size_t stride_y_ {0};
     std::size_t stride_z_ {0};
   };

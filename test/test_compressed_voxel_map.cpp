@@ -12,8 +12,9 @@ TEST(CompressedVoxelMapTest, LoadAndQuery)
 
   emcl2::CompressedVoxelMap map;
   ASSERT_TRUE(map.loadFromFile(path));
-
   EXPECT_TRUE(map.isOccupied(0.5, 0.5, 0.5));
+  EXPECT_FALSE(map.isOccupied(0.5, 1.5, 0.5));
+  EXPECT_FALSE(map.isOccupied(1.5, 0.5, 0.5));
   EXPECT_FALSE(map.isOccupied(3.0, 0.5, 0.5));
 }
 
@@ -24,7 +25,8 @@ TEST(CompressedVoxelMapTest, LoadWithOffset)
   emcl2::CompressedVoxelMap map;
   ASSERT_TRUE(map.loadFromFile(path));
 
-  EXPECT_FALSE(map.isOccupied(-1.5, 0.5, 0.5));  // オフセット側ブロックは非占有
-  EXPECT_TRUE(map.isOccupied(0.5, 0.5, 0.5));   // 右隣ブロックは占有
+  EXPECT_FALSE(map.isOccupied(-1.5, 0.5, 0.5));  // マップ外は非占有
+  EXPECT_FALSE(map.isOccupied(2.5, 0.5, 0.5));   // ブロック ID は 1 だがパターン的に空
+  EXPECT_TRUE(map.isOccupied(3.5, 1.5, 0.5));    // 同ブロック内の別ボクセルは占有
   EXPECT_FALSE(map.isOccupied(5.0, 0.5, 0.5));  // Outside block grid
 }

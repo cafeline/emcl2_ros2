@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <limits>
 #include <string>
+#include <vector>
 
 #include <hdf5.h>
 
@@ -96,6 +97,27 @@ inline void write_matrix_int32(
   H5Sclose(space);
 }
 
+inline std::vector < uint8_t > pack_block_indices(
+  const std::vector < uint32_t > & indices,
+  uint32_t bit_width)
+{
+  const std::size_t total_bits = static_cast<std::size_t>(bit_width) * indices.size();
+  std::vector < uint8_t > packed((total_bits + 7U) / 8U, 0);
+
+  for (std::size_t i = 0; i < indices.size(); ++i) {
+    const uint32_t value = indices[i];
+    for (uint32_t bit = 0; bit < bit_width; ++bit) {
+      const std::size_t absolute_bit = i * static_cast<std::size_t>(bit_width) + bit;
+      const std::size_t byte_index = absolute_bit >> 3U;
+      const std::size_t bit_index = absolute_bit & 7U;
+      const uint8_t bit_value = static_cast<uint8_t>((value >> bit) & 0x1U);
+      packed[byte_index] = static_cast<uint8_t>(packed[byte_index] | (bit_value << bit_index));
+    }
+  }
+
+  return packed;
+}
+
 inline std::string create_basic_hdf5_map(const std::string & filename)
 {
   const auto path = (std::filesystem::temp_directory_path() / filename).string();
@@ -107,21 +129,21 @@ inline std::string create_basic_hdf5_map(const std::string & filename)
   write_scalar_float(compression, "voxel_size", 1.0f);
   write_scalar_uint32(compression, "block_size", 2U);
   write_scalar_uint32(compression, "pattern_bits", 8U);
-  write_scalar_uint32(compression, "dictionary_size", 1U);
-  write_scalar_uint32(compression, "block_index_bit_width", 16U);
+  write_scalar_uint32(compression, "dictionary_size", 3U);
+  write_scalar_uint32(compression, "block_index_bit_width", 2U);
   const float origin[3] = {0.0f, 0.0f, 0.0f};
   write_array_float(compression, "grid_origin", origin, 3);
   H5Gclose(compression);
 
   hid_t dictionary = H5Gcreate2(file, "/dictionary", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   write_scalar_uint32(dictionary, "pattern_length", 8U);
-  const unsigned char patterns[1] = {0xFF};
-  write_array_uint8(dictionary, "patterns", patterns, 1);
+  const unsigned char patterns[3] = {0x00, 0x01, 0x08};
+  write_array_uint8(dictionary, "patterns", patterns, 3);
   H5Gclose(dictionary);
 
   hid_t compressed = H5Gcreate2(file, "/compressed_data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  const uint8_t block_indices[1] = {1};
-  write_array_uint8(compressed, "block_indices", block_indices, 1);
+  const auto block_indices = pack_block_indices({1U}, 2U);
+  write_array_uint8(compressed, "block_indices", block_indices.data(), block_indices.size());
   const int32_t block_dims[3] = {1, 1, 1};
   write_array_int32(compressed, "block_dims", block_dims, 3);
   H5Gclose(compressed);
@@ -141,24 +163,21 @@ inline std::string create_offset_hdf5_map(const std::string & filename)
   write_scalar_float(compression, "voxel_size", 1.0f);
   write_scalar_uint32(compression, "block_size", 2U);
   write_scalar_uint32(compression, "pattern_bits", 8U);
-  write_scalar_uint32(compression, "dictionary_size", 1U);
-  write_scalar_uint32(compression, "block_index_bit_width", 16U);
+  write_scalar_uint32(compression, "dictionary_size", 3U);
+  write_scalar_uint32(compression, "block_index_bit_width", 2U);
   const float origin[3] = {0.0f, 0.0f, 0.0f};
   write_array_float(compression, "grid_origin", origin, 3);
   H5Gclose(compression);
 
   hid_t dictionary = H5Gcreate2(file, "/dictionary", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   write_scalar_uint32(dictionary, "pattern_length", 8U);
-  const unsigned char patterns[1] = {0xFF};
-  write_array_uint8(dictionary, "patterns", patterns, 1);
+  const unsigned char patterns[3] = {0x00, 0x01, 0x08};
+  write_array_uint8(dictionary, "patterns", patterns, 3);
   H5Gclose(dictionary);
 
   hid_t compressed = H5Gcreate2(file, "/compressed_data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  const uint8_t block_indices[2] = {
-    1,
-    0
-  };
-  write_array_uint8(compressed, "block_indices", block_indices, 2);
+  const auto block_indices = pack_block_indices({0U, 2U}, 2U);
+  write_array_uint8(compressed, "block_indices", block_indices.data(), block_indices.size());
   const int32_t block_dims[3] = {2, 1, 1};
   write_array_int32(compressed, "block_dims", block_dims, 3);
   H5Gclose(compressed);
