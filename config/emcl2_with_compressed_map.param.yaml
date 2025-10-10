@@ -5,11 +5,11 @@
     odom_frame_id: "odom"
     base_frame_id: "base_link"
     footprint_frame_id: "base_footprint"
-    pointcloud_topic: "/livox/lidar"
+    pointcloud_topic: "/pointcloud/cut"
     map_hdf5_path: "/home/ryo/raspicat_ws/src/maps/tsudanuma_voxelsize_01_compressed_map.h5"
     transform_tolerance: 0.2
-    odom_freq: 20
-    num_particles: 100
+    odom_freq: 10
+    num_particles: 1000
     initial_pose_x: 0.0
     initial_pose_y: 0.0
     initial_pose_yaw: 0.0

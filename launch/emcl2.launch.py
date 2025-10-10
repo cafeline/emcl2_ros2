@@ -10,15 +10,11 @@ from launch_ros.actions import Node, SetParameter
 
 def generate_launch_description():
     params_file = LaunchConfiguration('params_file')
-    # ユーザ要望: map_yaml_file を引数ではなくこのファイル内で直接指定
-    # 注意: 絶対パスをハードコードすると他環境で再利用しづらいので、
-    #       共有用にする場合は再度 LaunchArgument 化するか、パッケージの share に配置してください。
     hardcoded_map_yaml = '/home/ryo/raspicat_ws/src/maps/mile1_2_50.yaml'
     use_sim_time = LaunchConfiguration('use_sim_time')
     cutter_params_file = LaunchConfiguration('cutter_params_file')
     cutter_regions_file = LaunchConfiguration('cutter_regions_file')
 
-    # map の Launch 引数は不要になったため削除（再利用したい場合は復活させてください）
     declare_use_sim_time = DeclareLaunchArgument(
         'use_sim_time',
         default_value='false',
@@ -88,7 +84,6 @@ def generate_launch_description():
     )
 
     ld = LaunchDescription()
-    # map 引数宣言は削除済み
     ld.add_action(declare_use_sim_time)
     ld.add_action(declare_params_file)
     ld.add_action(declare_cutter_params)

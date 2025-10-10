@@ -268,7 +268,6 @@ void EMcl2Node::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPt
 
   observation.points = std::move(raw_points);
   auto t_start_su = std::chrono::steady_clock::now();
-  RCLCPP_INFO(get_logger(), "#############################################hoge");
 
   filter_->sensorUpdate(map_, observation);
   const auto sensor_update_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
