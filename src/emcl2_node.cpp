@@ -16,7 +16,7 @@ namespace emcl2
 {
 
 EMcl2Node::EMcl2Node()
-: Node("emcl2_node"), rng_(std::random_device{}())
+: Node("emcl2_node"), rng_(std::random_device{}()), node_start_time_(std::chrono::steady_clock::now())
 {
   declareParameter();
   loadMap();
@@ -278,6 +278,35 @@ void EMcl2Node::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPt
   RCLCPP_INFO(
     get_logger(), "MCL update: %.3f ms",
     static_cast<double>(total_update_elapsed.count()) / 1000.0);
+  const auto now_time = std::chrono::steady_clock::now();
+  if (!total_update_measurement_started_ &&
+    now_time - node_start_time_ >= std::chrono::seconds(10))
+  {
+    total_update_measurement_started_ = true;
+    total_update_measurement_sum_us_ = 0.0;
+    total_update_measurements_us_.clear();
+  }
+
+  if (total_update_measurement_started_) {
+    const double elapsed_us = static_cast<double>(total_update_elapsed.count());
+    total_update_measurements_us_.push_back(elapsed_us);
+    total_update_measurement_sum_us_ += elapsed_us;
+
+    if (total_update_measurements_us_.size() > total_update_measurement_target_) {
+      total_update_measurement_sum_us_ -= total_update_measurements_us_.front();
+      total_update_measurements_us_.pop_front();
+    }
+
+    if (total_update_measurements_us_.size() == total_update_measurement_target_) {
+      const double average_ms =
+        (total_update_measurement_sum_us_ /
+         static_cast<double>(total_update_measurement_target_)) /
+        1000.0;
+      RCLCPP_INFO(
+        get_logger(), "Sliding average of last %zu MCL updates: %.3f ms",
+        total_update_measurement_target_, average_ms);
+    }
+  }
 
   publishOutputs(cloud_stamp);
 }
