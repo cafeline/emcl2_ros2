@@ -18,6 +18,9 @@
 
 #include <Eigen/Geometry>
 
+#include <chrono>
+#include <cstddef>
+#include <deque>
 #include <memory>
 #include <random>
 #include <string>
@@ -85,6 +88,10 @@ private:
     rclcpp::TimerBase::SharedPtr loop_timer_;
 
     Pose last_odom_pose_;
+    std::chrono::steady_clock::time_point node_start_time_;
+    bool total_update_measurement_started_ {false};
+    double total_update_measurement_sum_us_ {0.0};
+    std::deque<double> total_update_measurements_us_;
     bool have_last_odom_ {false};
     double init_x_ {0.0};
     double init_y_ {0.0};
@@ -102,6 +109,8 @@ private:
     double odom_noise_fr_ {0.05};
     double odom_noise_rf_ {0.05};
     double odom_noise_rr_ {0.05};
+
+    static constexpr std::size_t total_update_measurement_target_ = 1000U;
   };
 
 }  // namespace emcl2
