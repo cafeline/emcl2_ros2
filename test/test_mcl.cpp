@@ -4,22 +4,24 @@
 #include <Eigen/Geometry>
 
 #include <random>
+#include <vector>
 
-#include "emcl2/CompressedVoxelMap.h"
+#include "emcl2/OctomapMap.h"
 #include "emcl2/Mcl.h"
 #include "emcl2/PointCloudObservation.h"
 #include "emcl2/Particle.h"
 
-#include "hdf5_test_utils.hpp"
+#include "octomap_test_utils.hpp"
 
 namespace
 {
 
-emcl2::CompressedVoxelMap createMap()
+emcl2::OctomapMap createMap()
 {
-  emcl2::CompressedVoxelMap map;
-  EXPECT_TRUE(map.loadFromFile(emcl2_test::create_basic_hdf5_map("mcl_map.h5")));
-  return map;
+  const std::vector<Eigen::Vector3d> points = {
+    Eigen::Vector3d(0.5, 0.5, 0.5)
+  };
+  return emcl2_test::create_octomap_map("mcl_map.bt", points);
 }
 
 emcl2::PointCloudObservation observationAt(const Eigen::Vector3d & point)

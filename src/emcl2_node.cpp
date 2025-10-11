@@ -40,7 +40,7 @@ void EMcl2Node::declareParameter()
   this->declare_parameter("odom_frame_id", odom_frame_id_);
   this->declare_parameter("base_frame_id", base_frame_id_);
   this->declare_parameter("pointcloud_topic", pointcloud_topic_);
-  this->declare_parameter("map_hdf5_path", std::string(""));
+  this->declare_parameter("octomap_path", std::string(""));
   this->declare_parameter("odom_freq", odom_freq_);
   this->declare_parameter("transform_tolerance", transform_tolerance_);
 
@@ -119,16 +119,16 @@ void EMcl2Node::initTF()
 
 void EMcl2Node::loadMap()
 {
-  const auto path = this->get_parameter("map_hdf5_path").as_string();
+  const auto path = this->get_parameter("octomap_path").as_string();
   if (path.empty()) {
-    throw rclcpp::exceptions::InvalidParametersException("map_hdf5_path parameter is empty");
+    throw rclcpp::exceptions::InvalidParametersException("octomap_path parameter is empty");
   }
   if (!map_.loadFromFile(path)) {
-    throw rclcpp::exceptions::InvalidParametersException("failed to load HDF5 map: " + path);
+    throw rclcpp::exceptions::InvalidParametersException("failed to load octomap: " + path);
   }
   map_loaded_ = true;
   map_receive_ = true;
-  RCLCPP_INFO(get_logger(), "Loaded compressed voxel map: %s", path.c_str());
+  RCLCPP_INFO(get_logger(), "Loaded octomap: %s", path.c_str());
 }
 
 void EMcl2Node::initializeParticles()
@@ -239,11 +239,6 @@ void EMcl2Node::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPt
   observation.sensor_offset = observation_template_.sensor_offset;
   observation.sensor_rotation = observation_template_.sensor_rotation;
   const auto cloud_stamp = msg->header.stamp;
-  double dummy_var_x = 0.0;
-  double dummy_var_y = 0.0;
-  double dummy_var_yaw = 0.0;
-  Pose mean_pose = computeWeightedMean(dummy_var_x, dummy_var_y, dummy_var_yaw);
-
   std::vector<Eigen::Vector3d> raw_points;
   raw_points.reserve(static_cast<std::size_t>(msg->width) * msg->height);
 

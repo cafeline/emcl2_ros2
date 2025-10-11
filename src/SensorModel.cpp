@@ -7,7 +7,7 @@ namespace emcl2
 
 double evaluatePointCloudLikelihood(
   const Pose & pose, const PointCloudObservation & observation,
-  const CompressedVoxelMap & map)
+  const OctomapMap & map)
 {
   if (observation.points.empty()) {
     return 0.0;
