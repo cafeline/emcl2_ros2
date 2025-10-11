@@ -8,7 +8,7 @@ Mcl::Mcl(std::vector<Particle> particles)
 {
 }
 
-void Mcl::sensorUpdate(const CompressedVoxelMap & map, const PointCloudObservation & observation)
+void Mcl::sensorUpdate(const HashedVoxelMap & map, const PointCloudObservation & observation)
 {
   for (auto & particle : particles_) {
     particle.updateWeight(map, observation);

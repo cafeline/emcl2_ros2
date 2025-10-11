@@ -40,7 +40,7 @@ void EMcl2Node::declareParameter()
   this->declare_parameter("odom_frame_id", odom_frame_id_);
   this->declare_parameter("base_frame_id", base_frame_id_);
   this->declare_parameter("pointcloud_topic", pointcloud_topic_);
-  this->declare_parameter("map_hdf5_path", std::string(""));
+  this->declare_parameter("map_voxelhash_path", std::string(""));
   this->declare_parameter("odom_freq", odom_freq_);
   this->declare_parameter("transform_tolerance", transform_tolerance_);
 
@@ -119,16 +119,16 @@ void EMcl2Node::initTF()
 
 void EMcl2Node::loadMap()
 {
-  const auto path = this->get_parameter("map_hdf5_path").as_string();
+  const auto path = this->get_parameter("map_voxelhash_path").as_string();
   if (path.empty()) {
-    throw rclcpp::exceptions::InvalidParametersException("map_hdf5_path parameter is empty");
+    throw rclcpp::exceptions::InvalidParametersException("map_voxelhash_path parameter is empty");
   }
   if (!map_.loadFromFile(path)) {
-    throw rclcpp::exceptions::InvalidParametersException("failed to load HDF5 map: " + path);
+    throw rclcpp::exceptions::InvalidParametersException("failed to load VoxelHash map: " + path);
   }
   map_loaded_ = true;
   map_receive_ = true;
-  RCLCPP_INFO(get_logger(), "Loaded compressed voxel map: %s", path.c_str());
+  RCLCPP_INFO(get_logger(), "Loaded voxel hash map: %s", path.c_str());
 }
 
 void EMcl2Node::initializeParticles()

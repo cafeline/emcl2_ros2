@@ -1,7 +1,7 @@
 #ifndef EMCL2__MCL_H_
 #define EMCL2__MCL_H_
 
-#include "emcl2/CompressedVoxelMap.h"
+#include "emcl2/HashedVoxelMap.h"
 #include "emcl2/Particle.h"
 #include "emcl2/PointCloudObservation.h"
 
@@ -15,7 +15,7 @@ namespace emcl2 {
 public:
     explicit Mcl(std::vector < Particle > particles);
 
-    void sensorUpdate(const CompressedVoxelMap & map, const PointCloudObservation & observation);
+    void sensorUpdate(const HashedVoxelMap & map, const PointCloudObservation & observation);
     void normalizeWeights();
     void resample(std::mt19937 & rng);
     void initialize(double x, double y, double yaw);

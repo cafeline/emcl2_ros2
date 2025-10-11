@@ -1,7 +1,7 @@
 #ifndef EMCL2__EMCL2_NODE_H_
 #define EMCL2__EMCL2_NODE_H_
 
-#include "emcl2/CompressedVoxelMap.h"
+#include "emcl2/HashedVoxelMap.h"
 #include "emcl2/Mcl.h"
 #include "emcl2/OdomModel.h"
 #include "emcl2/PointCloudObservation.h"
@@ -54,7 +54,7 @@ private:
     geometry_msgs::msg::PoseArray buildParticleArray(const rclcpp::Time & stamp) const;
     Pose computeWeightedMean(double & var_x, double & var_y, double & var_yaw) const;
 
-    CompressedVoxelMap map_;
+    HashedVoxelMap map_;
     std::unique_ptr < Mcl > filter_;
     std::unique_ptr < OdomModel > odom_model_;
     PointCloudObservation observation_template_;

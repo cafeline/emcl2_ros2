@@ -13,7 +13,7 @@ def generate_launch_description():
     default_params = os.path.join(
         package_dir,
         'config',
-        'emcl2_with_compressed_map.param.yaml'
+        'emcl2_with_voxelhash_map.param.yaml'
     )
 
     declare_params = DeclareLaunchArgument(

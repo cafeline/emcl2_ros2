@@ -1,7 +1,7 @@
 #ifndef EMCL2__PARTICLE_H_
 #define EMCL2__PARTICLE_H_
 
-#include "emcl2/CompressedVoxelMap.h"
+#include "emcl2/HashedVoxelMap.h"
 #include "emcl2/PointCloudObservation.h"
 #include "emcl2/Pose.h"
 
@@ -12,7 +12,7 @@ namespace emcl2 {
 public:
     Particle(double x, double y, double yaw, double weight);
 
-    double updateWeight(const CompressedVoxelMap & map, const PointCloudObservation & observation);
+    double updateWeight(const HashedVoxelMap & map, const PointCloudObservation & observation);
 
     const Pose & pose() const {return p_;}
     Pose & pose() {return p_;}

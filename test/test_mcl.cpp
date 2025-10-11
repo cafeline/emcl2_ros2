@@ -3,22 +3,27 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
+#include <filesystem>
 #include <random>
 
-#include "emcl2/CompressedVoxelMap.h"
+#include "emcl2/HashedVoxelMap.h"
 #include "emcl2/Mcl.h"
 #include "emcl2/PointCloudObservation.h"
 #include "emcl2/Particle.h"
 
-#include "hdf5_test_utils.hpp"
-
 namespace
 {
 
-emcl2::CompressedVoxelMap createMap()
+std::string testDataPath()
 {
-  emcl2::CompressedVoxelMap map;
-  EXPECT_TRUE(map.loadFromFile(emcl2_test::create_basic_hdf5_map("mcl_map.h5")));
+  const std::filesystem::path current_file(__FILE__);
+  return (current_file.parent_path() / "data" / "simple_hash_map.npz").string();
+}
+
+emcl2::HashedVoxelMap createMap()
+{
+  emcl2::HashedVoxelMap map;
+  EXPECT_TRUE(map.loadFromFile(testDataPath()));
   return map;
 }
 
@@ -36,7 +41,7 @@ emcl2::PointCloudObservation observationAt(const Eigen::Vector3d & point)
 TEST(MclTest, SensorUpdateFavoursConsistentParticles)
 {
   auto map = createMap();
-  auto obs = observationAt(Eigen::Vector3d(0.5, 0.5, 0.5));
+  auto obs = observationAt(Eigen::Vector3d(0.05, 0.05, 0.05));
 
   std::vector<emcl2::Particle> particles;
   particles.emplace_back(0.0, 0.0, 0.0, 1.0);
