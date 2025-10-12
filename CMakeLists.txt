@@ -18,7 +18,7 @@ ament_auto_find_build_dependencies()
 
 set(EMCL2_CORE_SOURCES
   src/Pose.cpp
-  src/CompressedVoxelMap.cpp
+  src/RawVoxelGridMap.cpp
   src/SensorModel.cpp
   src/Particle.cpp
   src/Mcl.cpp

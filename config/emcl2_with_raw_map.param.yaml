@@ -6,7 +6,7 @@
     base_frame_id: "base_link"
     footprint_frame_id: "base_footprint"
     pointcloud_topic: "/pointcloud/cut"
-    map_hdf5_path: "/home/ryo/raspicat_ws/src/maps/tsudanuma_voxelsize_01_compressed_map.h5"
+    map_hdf5_path: "/home/ryo/raspicat_ws/src/maps/tsudanuma_voxelsize_01_raw_map.h5"
     transform_tolerance: 0.2
     odom_freq: 10
     num_particles: 1000
@@ -25,8 +25,3 @@
     odom_fw_dev_per_rot: 0.0001
     odom_rot_dev_per_fw: 0.13
     odom_rot_dev_per_rot: 0.2
-    laser_likelihood_max_dist: 0.2
-    laser_min_range: 0.0
-    laser_max_range: 100000000.0
-    alpha_threshold: 0.0
-    sensor_reset: false

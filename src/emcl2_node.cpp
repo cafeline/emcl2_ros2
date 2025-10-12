@@ -16,7 +16,8 @@ namespace emcl2
 {
 
 EMcl2Node::EMcl2Node()
-: Node("emcl2_node"), rng_(std::random_device{}()), node_start_time_(std::chrono::steady_clock::now())
+: Node("emcl2_node"), rng_(std::random_device{}()), node_start_time_(
+    std::chrono::steady_clock::now())
 {
   declareParameter();
   loadMap();
@@ -305,7 +306,7 @@ void EMcl2Node::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPt
     if (total_update_measurements_us_.size() == total_update_measurement_target_) {
       const double average_ms =
         (total_update_measurement_sum_us_ /
-         static_cast<double>(total_update_measurement_target_)) /
+        static_cast<double>(total_update_measurement_target_)) /
         1000.0;
       RCLCPP_INFO(
         get_logger(), "Sliding average of last %zu MCL updates: %.3f ms",

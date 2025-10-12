@@ -24,7 +24,7 @@ def generate_launch_description():
         default_value=[
             TextSubstitution(text=os.path.join(
                 get_package_share_directory('emcl2'), 'config', '')),
-            TextSubstitution(text='emcl2_with_compressed_map.param.yaml')],
+            TextSubstitution(text='emcl2_with_raw_map.param.yaml')],
         description='emcl2 param file path')
     declare_cutter_params = DeclareLaunchArgument(
         'cutter_params_file',
