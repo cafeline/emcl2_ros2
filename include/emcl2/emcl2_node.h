@@ -91,6 +91,7 @@ private:
     std::chrono::steady_clock::time_point node_start_time_;
     bool total_update_measurement_started_ {false};
     double total_update_measurement_sum_us_ {0.0};
+    double total_update_measurement_sum_sq_us_ {0.0};
     std::deque<double> total_update_measurements_us_;
     bool have_last_odom_ {false};
     double init_x_ {0.0};
