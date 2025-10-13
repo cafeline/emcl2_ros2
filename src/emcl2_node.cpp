@@ -284,6 +284,7 @@ void EMcl2Node::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPt
   {
     total_update_measurement_started_ = true;
     total_update_measurement_sum_us_ = 0.0;
+    total_update_measurement_sum_sq_us_ = 0.0;
     total_update_measurements_us_.clear();
   }
 
@@ -291,20 +292,31 @@ void EMcl2Node::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPt
     const double elapsed_us = static_cast<double>(total_update_elapsed.count());
     total_update_measurements_us_.push_back(elapsed_us);
     total_update_measurement_sum_us_ += elapsed_us;
+    total_update_measurement_sum_sq_us_ += elapsed_us * elapsed_us;
 
     if (total_update_measurements_us_.size() > total_update_measurement_target_) {
-      total_update_measurement_sum_us_ -= total_update_measurements_us_.front();
+      const double oldest = total_update_measurements_us_.front();
+      total_update_measurement_sum_us_ -= oldest;
+      total_update_measurement_sum_sq_us_ -= oldest * oldest;
       total_update_measurements_us_.pop_front();
     }
 
     if (total_update_measurements_us_.size() == total_update_measurement_target_) {
-      const double average_ms =
-        (total_update_measurement_sum_us_ /
-         static_cast<double>(total_update_measurement_target_)) /
-        1000.0;
+      const double window_size = static_cast<double>(total_update_measurement_target_);
+      const double average_us = total_update_measurement_sum_us_ / window_size;
+      const double variance_us =
+        (total_update_measurement_sum_sq_us_ / window_size) - (average_us * average_us);
+      const double average_ms = average_us / 1000.0;
+      const double stddev_ms = std::sqrt(std::max(variance_us, 0.0)) / 1000.0;
+      double abs_sum_us = 0.0;
+      for (const double sample_us : total_update_measurements_us_) {
+        abs_sum_us += std::abs(sample_us - average_us);
+      }
+      const double mad_ms = (abs_sum_us / window_size) / 1000.0;
       RCLCPP_INFO(
-        get_logger(), "Sliding average of last %zu MCL updates: %.3f ms",
-        total_update_measurement_target_, average_ms);
+        get_logger(),
+        "Sliding stats of last %zu MCL updates: avg=%.3f ms, stddev=%.3f ms, mad=%.3f ms",
+        total_update_measurement_target_, average_ms, stddev_ms, mad_ms);
     }
   }
 
