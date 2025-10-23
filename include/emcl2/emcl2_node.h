@@ -1,3 +1,8 @@
+// SPDX-FileCopyrightText: 2022 Ryuichi Ueda ryuichiueda@gmail.com
+// SPDX-FileCopyrightText: 2025 Ryo Funai
+// SPDX-License-Identifier: LGPL-3.0-or-later
+// CAUTION: Some lines came from amcl (LGPL).
+
 #ifndef EMCL2__EMCL2_NODE_H_
 #define EMCL2__EMCL2_NODE_H_
 

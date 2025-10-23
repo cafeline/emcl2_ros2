@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 Ryo Funai
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 #ifndef EMCL2_TEST_OCTOMAP_TEST_UTILS_HPP_
 #define EMCL2_TEST_OCTOMAP_TEST_UTILS_HPP_
 
