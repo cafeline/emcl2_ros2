@@ -1,4 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Ryuichi Ueda ryuichiueda@gmail.com
+// SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 #ifndef EMCL2__POSE_H_

@@ -1,3 +1,8 @@
+// SPDX-FileCopyrightText: 2022 Ryuichi Ueda ryuichiueda@gmail.com
+// SPDX-FileCopyrightText: 2025 Ryo Funai
+// SPDX-License-Identifier: LGPL-3.0-or-later
+// CAUTION: Some lines came from amcl (LGPL).
+
 #include "emcl2/emcl2_node.h"
 
 #include <geometry_msgs/msg/transform_stamped.hpp>
