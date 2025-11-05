@@ -10,28 +10,23 @@ from launch_ros.actions import Node, SetParameter
 
 def generate_launch_description():
     params_file = LaunchConfiguration('params_file')
-    hardcoded_map_yaml = '/home/ryo/raspicat_ws/src/maps/mile1_2_50.yaml'
     use_sim_time = LaunchConfiguration('use_sim_time')
     cutter_params_file = LaunchConfiguration('cutter_params_file')
     cutter_regions_file = LaunchConfiguration('cutter_regions_file')
+    vq_params_file = LaunchConfiguration('vq_params_file')
+    vq_map_file = LaunchConfiguration('vq_map_file')
 
     declare_use_sim_time = DeclareLaunchArgument(
-        'use_sim_time',
-        default_value='false',
-        description='Use simulation (Gazebo) clock if true')
+        'use_sim_time', default_value='false', description='Use simulation (Gazebo) clock if true')
     declare_params_file = DeclareLaunchArgument(
         'params_file',
-        default_value=[
-            TextSubstitution(text=os.path.join(
-                get_package_share_directory('emcl2'), 'config', '')),
+        default_value=[TextSubstitution(text=os.path.join(get_package_share_directory('emcl2'), 'config', '')),
             TextSubstitution(text='emcl2_with_compressed_map.param.yaml')],
         description='emcl2 param file path')
     declare_cutter_params = DeclareLaunchArgument(
         'cutter_params_file',
-        default_value=os.path.join(
-            get_package_share_directory('pointcloud2_cutter'),
-            'config',
-            'pointcloud2_cutter.param.yaml'),
+        default_value=os.path.join(get_package_share_directory('pointcloud2_cutter'),
+            'config', 'pointcloud2_cutter.param.yaml'),
         description='pointcloud2_cutter param file path')
     declare_cutter_regions = DeclareLaunchArgument(
         'cutter_regions_file',
@@ -40,18 +35,25 @@ def generate_launch_description():
             'config',
             'tsudanuma_regions.yaml'),
         description='pointcloud2_cutter regions file path')
+    declare_vq_params = DeclareLaunchArgument(
+        'vq_params_file',
+        default_value=os.path.join(
+            get_package_share_directory('vq_server'),
+            'config',
+            'vq_server.params.yaml'),
+        description='vq_server param file path')
+    declare_vq_map = DeclareLaunchArgument(
+        'vq_map_file',
+        default_value=os.path.join(
+            get_package_share_directory('vq_server'),
+            'maps',
+            'tsudanuma_voxelsize_05_compressed_map.h5'),
+        description='Compressed voxel map for vq_server')
 
-    lifecycle_nodes = ['map_server']
 
     launch_node = GroupAction(
         actions=[
             SetParameter('use_sim_time', use_sim_time),
-            Node(
-                package='nav2_map_server',
-                executable='map_server',
-                name='map_server',
-                parameters=[{'yaml_filename': hardcoded_map_yaml}],
-                output='screen'),
             Node(
                 package='tf2_ros',
                 executable='static_transform_publisher',
@@ -68,18 +70,20 @@ def generate_launch_description():
                 ],
                 output='screen'),
             Node(
+                package='vq_server',
+                executable='vq_server',
+                name='vq_server',
+                parameters=[
+                    vq_params_file,
+                    {'map_file': LaunchConfiguration('vq_map_file')}
+                ],
+                output='screen'),
+            Node(
                 name='emcl2',
                 package='emcl2',
                 executable='emcl2_node',
                 parameters=[params_file],
                 output='screen'),
-            Node(
-                package='nav2_lifecycle_manager',
-                executable='lifecycle_manager',
-                name='lifecycle_manager_localization',
-                output='screen',
-                parameters=[{'autostart': True},
-                            {'node_names': lifecycle_nodes}])
         ]
     )
 
@@ -88,6 +92,8 @@ def generate_launch_description():
     ld.add_action(declare_params_file)
     ld.add_action(declare_cutter_params)
     ld.add_action(declare_cutter_regions)
+    ld.add_action(declare_vq_params)
+    ld.add_action(declare_vq_map)
 
     ld.add_action(launch_node)
 

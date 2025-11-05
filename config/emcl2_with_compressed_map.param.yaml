@@ -6,7 +6,7 @@
     base_frame_id: "base_link"
     footprint_frame_id: "base_footprint"
     pointcloud_topic: "/pointcloud/cut"
-    map_hdf5_path: "/home/ryo/raspicat_ws/src/maps/tsudanuma_voxelsize_01_compressed_map.h5"
+    map_hdf5_path: "/home/ryo/ros2_ws/src/emcl2_ros2/maps/tsudanuma_voxelsize_01_compressed_map.h5"
     transform_tolerance: 0.2
     odom_freq: 10
     num_particles: 1000
