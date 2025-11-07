@@ -5,6 +5,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, GroupAction
 from launch.substitutions import LaunchConfiguration, TextSubstitution
+from launch.conditions import IfCondition
 from launch_ros.actions import Node, SetParameter
 
 
@@ -15,6 +16,14 @@ def generate_launch_description():
     cutter_regions_file = LaunchConfiguration('cutter_regions_file')
     vq_params_file = LaunchConfiguration('vq_params_file')
     vq_map_file = LaunchConfiguration('vq_map_file')
+    simple_map_file = LaunchConfiguration('simple_map_file')
+    obstacle_tracker_params_file = LaunchConfiguration('obstacle_tracker_params_file')
+    tvvf_vo_params_file = LaunchConfiguration('tvvf_vo_params_file')
+    waypoint_params_file = LaunchConfiguration('waypoint_params_file')
+    waypoint_csv_file = LaunchConfiguration('waypoint_csv_file')
+    auto_start = LaunchConfiguration('auto_start')
+    rviz_enable = LaunchConfiguration('rviz')
+    rviz_config_file = LaunchConfiguration('rviz_config_file')
 
     declare_use_sim_time = DeclareLaunchArgument(
         'use_sim_time', default_value='false', description='Use simulation (Gazebo) clock if true')
@@ -49,6 +58,56 @@ def generate_launch_description():
             'maps',
             'tsudanuma_voxelsize_05_compressed_map.h5'),
         description='Compressed voxel map for vq_server')
+    declare_simple_map_file = DeclareLaunchArgument(
+        'simple_map_file',
+        default_value=os.path.join(
+            get_package_share_directory('raspicat_tvvf_navigation'),
+            'maps',
+            'nav.yaml'),
+        description='Map yaml file for simple_map_server')
+    declare_obstacle_tracker_params = DeclareLaunchArgument(
+        'obstacle_tracker_params_file',
+        default_value=os.path.join(
+            get_package_share_directory('raspicat_tvvf_navigation'),
+            'config',
+            'obstacle_tracker_params.yaml'),
+        description='Obstacle tracker param file path')
+    declare_tvvf_vo_params = DeclareLaunchArgument(
+        'tvvf_vo_params_file',
+        default_value=os.path.join(
+            get_package_share_directory('raspicat_tvvf_navigation'),
+            'config',
+            'tvvf_vo_params.yaml'),
+        description='tvvf_vo_c param file path')
+    declare_waypoint_params = DeclareLaunchArgument(
+        'waypoint_params_file',
+        default_value=os.path.join(
+            get_package_share_directory('raspicat_tvvf_navigation'),
+            'config',
+            'waypoint_follower_params.yaml'),
+        description='Waypoint follower param file path')
+    declare_waypoint_csv = DeclareLaunchArgument(
+        'waypoint_csv_file',
+        default_value=os.path.join(
+            get_package_share_directory('raspicat_tvvf_navigation'),
+            'maps',
+            'tsudanuma_WP.csv'),
+        description='Waypoint CSV file path')
+    declare_auto_start = DeclareLaunchArgument(
+        'auto_start',
+        default_value='false',
+        description='Automatically start waypoint navigation')
+    declare_rviz = DeclareLaunchArgument(
+        'rviz',
+        default_value='true',
+        description='Launch RViz2 for visualization')
+    declare_rviz_config = DeclareLaunchArgument(
+        'rviz_config_file',
+        default_value=os.path.join(
+            get_package_share_directory('raspicat_tvvf_navigation'),
+            'rviz',
+            'navigation.rviz'),
+        description='RViz configuration file path')
 
 
     launch_node = GroupAction(
@@ -75,8 +134,14 @@ def generate_launch_description():
                 name='vq_server',
                 parameters=[
                     vq_params_file,
-                    {'map_file': LaunchConfiguration('vq_map_file')}
+                    {'map_file': vq_map_file}
                 ],
+                output='screen'),
+            Node(
+                package='raspicat_tvvf_navigation',
+                executable='simple_map_server',
+                name='map_server',
+                parameters=[{'map_yaml_path': simple_map_file}],
                 output='screen'),
             Node(
                 name='emcl2',
@@ -84,6 +149,38 @@ def generate_launch_description():
                 executable='emcl2_node',
                 parameters=[params_file],
                 output='screen'),
+            Node(
+                package='obstacle_tracker',
+                executable='obstacle_tracker',
+                name='obstacle_tracker',
+                parameters=[obstacle_tracker_params_file],
+                output='screen'),
+            Node(
+                package='tvvf_vo_c',
+                executable='tvvf_vo_c_node',
+                name='tvvf_vo_c_node',
+                parameters=[tvvf_vo_params_file],
+                output='screen'),
+            Node(
+                package='raspicat_tvvf_navigation',
+                executable='waypoint_follower_node',
+                name='waypoint_follower_node',
+                parameters=[
+                    waypoint_params_file,
+                    {
+                        'waypoint_csv_path': waypoint_csv_file,
+                        'auto_start': auto_start,
+                    }
+                ],
+                output='screen'),
+            Node(
+                package='rviz2',
+                executable='rviz2',
+                name='rviz2',
+                output='screen',
+                arguments=['-d', rviz_config_file],
+                condition=IfCondition(rviz_enable)
+            ),
         ]
     )
 
@@ -94,6 +191,14 @@ def generate_launch_description():
     ld.add_action(declare_cutter_regions)
     ld.add_action(declare_vq_params)
     ld.add_action(declare_vq_map)
+    ld.add_action(declare_simple_map_file)
+    ld.add_action(declare_obstacle_tracker_params)
+    ld.add_action(declare_tvvf_vo_params)
+    ld.add_action(declare_waypoint_params)
+    ld.add_action(declare_waypoint_csv)
+    ld.add_action(declare_auto_start)
+    ld.add_action(declare_rviz)
+    ld.add_action(declare_rviz_config)
 
     ld.add_action(launch_node)
 
