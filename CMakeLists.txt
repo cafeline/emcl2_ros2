@@ -106,9 +106,22 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 
+set(_share_dirs_for_merged_layout
+  config
+  rviz2
+  launch
+  test
+)
+
+foreach(dir ${_share_dirs_for_merged_layout})
+  install(DIRECTORY ${dir}
+    DESTINATION ../share/${PROJECT_NAME})
+endforeach()
+
 ament_auto_package(
   INSTALL_TO_SHARE
   config
+  rviz2
   launch
   test
 )
