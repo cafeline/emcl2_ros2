@@ -195,7 +195,7 @@ Visualization Manager:
       Enabled: true
       Name: DynamicObstacles
       Namespaces:
-        {}
+        dynamic_obstacles: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -207,7 +207,7 @@ Visualization Manager:
       Enabled: true
       Name: StaticObstacles
       Namespaces:
-        {}
+        static_obstacles: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -288,7 +288,8 @@ Visualization Manager:
       Enabled: true
       Name: MarkerArray
       Namespaces:
-        {}
+        waypoint_path: true
+        waypoints: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -300,7 +301,7 @@ Visualization Manager:
       Enabled: true
       Name: MarkerArray
       Namespaces:
-        {}
+        "": true
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -389,6 +390,31 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /particlecloud
       Value: true
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Marker
+      Namespaces:
+        velocity_smoother: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /cmd_vel_marker
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: MarkerArray
+      Namespaces:
+        map_static_obstacles: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /map_static_obstacles_markers
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -435,25 +461,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 43.68008041381836
+      Distance: 8.932316780090332
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 1.1190404891967773
-        Y: 9.662466049194336
-        Z: 10.521486282348633
+        X: -2.3049392700195312
+        Y: 0.9553521871566772
+        Z: 3.8043384552001953
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.4597970247268677
+      Pitch: 0.9197970032691956
       Target Frame: base_link
       Value: Orbit (rviz)
-      Yaw: 3.130399227142334
+      Yaw: 3.135399341583252
     Saved: ~
 Window Geometry:
   Displays:

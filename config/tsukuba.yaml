@@ -3,7 +3,7 @@
 
 /**:
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: true
 
 emcl2:
   ros__parameters:
@@ -57,13 +57,13 @@ pointcloud2_cutter:
 
 obstacle_tracker:
   ros__parameters:
-    robot_processing_range: 10.0  # ロボット周囲で処理する最大距離[m]
+    robot_processing_range: 6.0  # ロボット周囲で処理する最大距離[m]
     dynamic_cluster_speed_threshold: 0.0  # 動的障害物と判定する速度しきい値[m/s]
     voxel_size: 0.2  # 領域離散化のボクセルサイズ[m]
     clustering_max_distance: 0.3  # DBSCANで同一クラスタとみなす最大距離[m]
     min_cluster_points: 2  # クラスタ形成に必要な最少点数
-    processing_frequency: 20.0  # レーザースキャン処理の周波数[Hz]
-    max_computation_time: 0.05  # 1周期あたりの許容計算時間[s]
+    processing_frequency: 10.0  # レーザースキャン処理の周波数[Hz]
+    max_computation_time: 0.15  # 1周期あたりの許容計算時間[s]
     enable_adaptive_dbscan: true  # 距離に応じてクラスタ閾値を変化させるか
     dbscan_base_eps: 0.3  # アダプティブDBSCANの基準半径[m]
     dbscan_min_points: 3  # DBSCANで必要な最小点数
@@ -74,7 +74,7 @@ obstacle_tracker:
     confidence_decay_rate: 0.1  # 観測が途切れた際の信頼度減衰率
     max_missing_frames: 10  # 追跡を維持できる未検出フレーム数
     enable_sliding_window: true  # スライディングウィンドウバッファを使用
-    sliding_window_size: 10  # 保持するフレーム数
+    sliding_window_size: 7  # 保持するフレーム数
     min_voxel_observations: 2  # 有効ボクセルとみなす最小観測回数
 
 tvvf_vo_c_node:
@@ -82,13 +82,35 @@ tvvf_vo_c_node:
     vector_field_path_width: 4.0 # パス幅 [m]
     max_linear_velocity: 0.5  # 最大並進速度[m/s]
     max_angular_velocity: 0.4  # 最大角速度[rad/s]
-    robot_radius: 0.15  # ロボット半径[m]
+    robot_radius: 0.24  # ロボット半径[m]
     base_frame: "base_link"  # ロボットベースフレーム名
     global_frame: "map"  # グローバル座標系
     goal_tolerance: 0.5  # 目標位置許容誤差[m]
     repulsive_strength: 0.6  # 斥力の強さ
     repulsive_influence_range: 1.0  # 斥力の影響範囲[m]
     enable_global_repulsion: false  # グローバル場への斥力ブレンドを有効化
+    vector_field_publish_interval: 2.5  # ベクトル場のパブリッシュ間隔[s]
+    map_repulsion_enabled: true  # OccupancyGridを斥力に利用
+    map_repulsion_max_distance: 6.0  # ロボット周囲のみマーカー化する距離[m]
+    map_repulsion_sampling_step: 0.5  # セルサンプリング間隔[m]
+    map_repulsion_recompute_distance: 0.8  # ロボット移動で再計算する距離[m]
+    map_repulsion_occupancy_threshold: 50  # 占有セル判定閾値
+    publish_map_obstacle_markers: true  # map由来障害物マーカーを出力
+
+velocity_smoother:
+  ros__parameters:
+    time_constant: 0.2
+    command_timeout: 0.5
+    max_linear_speed: 0.5
+    max_angular_speed: 0.4
+    publish_frequency: 30.0
+    base_frame: "base_link"
+    raw_cmd_topic: "cmd_vel_raw"
+    filtered_cmd_topic: "cmd_vel"
+    marker_topic: "cmd_vel_marker"
+    marker_scale_y: 0.5
+    marker_scale_z: 0.8
+    marker_color: [0.0, 0.8, 1.0, 0.9]
 
 waypoint_follower_node:
   ros__parameters:

@@ -6,17 +6,14 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, GroupAction
 from launch.substitutions import LaunchConfiguration
 from launch.conditions import IfCondition
-from launch_ros.actions import Node, SetParameter
+from launch_ros.actions import Node
 
 
 def generate_launch_description():
     nav_params_file = LaunchConfiguration('nav_params_file')
-    use_sim_time = LaunchConfiguration('use_sim_time')
     rviz_enable = LaunchConfiguration('rviz')
     rviz_config_file = LaunchConfiguration('rviz_config_file')
 
-    declare_use_sim_time = DeclareLaunchArgument(
-        'use_sim_time', default_value='false', description='Use simulation (Gazebo) clock if true')
     declare_nav_params = DeclareLaunchArgument(
         'nav_params_file',
         default_value=os.path.join(
@@ -39,7 +36,6 @@ def generate_launch_description():
 
     launch_node = GroupAction(
         actions=[
-            SetParameter('use_sim_time', use_sim_time),
             Node(
                 package='tf2_ros',
                 executable='static_transform_publisher',
@@ -85,6 +81,12 @@ def generate_launch_description():
                 parameters=[nav_params_file],
                 output='screen'),
             Node(
+                package='velocity_smoother',
+                executable='velocity_smoother',
+                name='velocity_smoother',
+                parameters=[nav_params_file],
+                output='screen'),
+            Node(
                 package='raspicat_tvvf_navigation',
                 executable='waypoint_follower_node',
                 name='waypoint_follower_node',
@@ -102,11 +104,9 @@ def generate_launch_description():
     )
 
     ld = LaunchDescription()
-    ld.add_action(declare_use_sim_time)
     ld.add_action(declare_nav_params)
     ld.add_action(declare_rviz)
     ld.add_action(declare_rviz_config)
-
     ld.add_action(launch_node)
 
     return ld
