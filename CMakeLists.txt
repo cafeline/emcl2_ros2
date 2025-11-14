@@ -108,6 +108,7 @@ install(PROGRAMS
 
 set(_share_dirs_for_merged_layout
   config
+  maps
   rviz2
   launch
   test
@@ -121,6 +122,7 @@ endforeach()
 ament_auto_package(
   INSTALL_TO_SHARE
   config
+  maps
   rviz2
   launch
   test
