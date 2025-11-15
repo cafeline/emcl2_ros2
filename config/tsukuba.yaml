@@ -74,7 +74,7 @@ obstacle_tracker:
     confidence_decay_rate: 0.1  # 観測が途切れた際の信頼度減衰率
     max_missing_frames: 10  # 追跡を維持できる未検出フレーム数
     enable_sliding_window: true  # スライディングウィンドウバッファを使用
-    sliding_window_size: 7  # 保持するフレーム数
+    sliding_window_size: 2  # 保持するフレーム数
     min_voxel_observations: 2  # 有効ボクセルとみなす最小観測回数
 
 tvvf_vo_c_node:
@@ -115,7 +115,7 @@ velocity_smoother:
 waypoint_follower_node:
   ros__parameters:
     waypoint_csv_path: "/home/user/navigation_ws/install/share/raspicat_tvvf_navigation/maps/tsukuba_WP_1.csv"
-    position_tolerance: 0.5
+    position_tolerance: 4.5
     orientation_tolerance: 3.14
     max_retry_count: 3  # 1ウェイポイントにつき再挑戦する最大回数
     goal_timeout: 30.0  # 各ウェイポイントで待機する最大時間[s]

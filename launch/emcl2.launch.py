@@ -149,7 +149,7 @@ def generate_launch_description():
                         package='obstacle_tracker',
                         executable='obstacle_tracker',
                         name='obstacle_tracker',
-                        parameters=[params_file],
+                        parameters=[params_file,  {'use_sim_time': False}],
                         output='screen'),
                     Node(
                         package='tvvf_vo_c',
