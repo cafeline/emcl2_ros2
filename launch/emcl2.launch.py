@@ -47,7 +47,7 @@ def generate_launch_description():
         default_value=os.path.join(
             pkg_emcl2,
             'maps',
-            'tsukuba20251004_vram8gb.h5'),
+            '19f_.h5'),
         description='HDF5 map used by emcl2 localization')
     declare_regions_config = DeclareLaunchArgument(
         'regions_config_file',
@@ -68,14 +68,14 @@ def generate_launch_description():
         default_value=os.path.join(
             pkg_raspicat_nav,
             'maps',
-            'navigation_map_2_edge_stopline.yaml'),
+            '19f.yaml'),
         description='Occupancy grid YAML for simple_map_server')
     declare_vq_map = DeclareLaunchArgument(
         'vq_map_file',
         default_value=os.path.join(
             pkg_vq_server,
             'maps',
-            'tsukuba20251004_vram8gb_voxel05.h5'),
+            '19f_.h5'),
         description='HDF5 map file for vq_server')
 
     with open(nav_params_path, 'r', encoding='utf-8') as f:
@@ -145,30 +145,30 @@ def generate_launch_description():
                         executable='emcl2_node',
                         parameters=[params_file],
                         output='screen'),
-                    Node(
-                        package='obstacle_tracker',
-                        executable='obstacle_tracker',
-                        name='obstacle_tracker',
-                        parameters=[params_file,  {'use_sim_time': False}],
-                        output='screen'),
-                    Node(
-                        package='tvvf_vo_c',
-                        executable='tvvf_vo_c_node',
-                        name='tvvf_vo_c_node',
-                        parameters=[params_file],
-                        output='screen'),
-                    Node(
-                        package='velocity_smoother',
-                        executable='velocity_smoother',
-                        name='velocity_smoother',
-                        parameters=[params_file],
-                        output='screen'),
-                    Node(
-                        package='raspicat_tvvf_navigation',
-                        executable='waypoint_follower_node',
-                        name='waypoint_follower_node',
-                        parameters=[params_file],
-                        output='screen'),
+                    # Node(
+                    #     package='obstacle_tracker',
+                    #     executable='obstacle_tracker',
+                    #     name='obstacle_tracker',
+                    #     parameters=[params_file,  {'use_sim_time': False}],
+                    #     output='screen'),
+                    # Node(
+                    #     package='tvvf_vo_c',
+                    #     executable='tvvf_vo_c_node',
+                    #     name='tvvf_vo_c_node',
+                    #     parameters=[params_file],
+                    #     output='screen'),
+                    # Node(
+                    #     package='velocity_smoother',
+                    #     executable='velocity_smoother',
+                    #     name='velocity_smoother',
+                    #     parameters=[params_file],
+                    #     output='screen'),
+                    # Node(
+                    #     package='raspicat_tvvf_navigation',
+                    #     executable='waypoint_follower_node',
+                    #     name='waypoint_follower_node',
+                    #     parameters=[params_file],
+                    #     output='screen'),
                     Node(
                         package='rviz2',
                         executable='rviz2',
