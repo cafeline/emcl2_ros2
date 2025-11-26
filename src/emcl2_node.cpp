@@ -62,6 +62,9 @@ void EMcl2Node::declareParameter()
   this->declare_parameter("sensor_roll", 0.0);
   this->declare_parameter("sensor_pitch", 0.0);
   this->declare_parameter("sensor_yaw", 0.0);
+  this->declare_parameter("imu_topic", imu_topic_);
+  this->declare_parameter("imu_timeout", imu_timeout_);
+  this->declare_parameter("use_imu_yaw", use_imu_yaw_);
 
   this->declare_parameter("odom_fw_dev_per_fw", odom_noise_ff_);
   this->declare_parameter("odom_fw_dev_per_rot", odom_noise_fr_);
@@ -94,6 +97,9 @@ void EMcl2Node::declareParameter()
   const double roll = this->get_parameter("sensor_roll").as_double();
   const double pitch = this->get_parameter("sensor_pitch").as_double();
   const double yaw = this->get_parameter("sensor_yaw").as_double();
+  imu_topic_ = this->get_parameter("imu_topic").as_string();
+  imu_timeout_ = this->get_parameter("imu_timeout").as_double();
+  use_imu_yaw_ = this->get_parameter("use_imu_yaw").as_bool();
   Eigen::AngleAxisd r_roll(roll, Eigen::Vector3d::UnitX());
   Eigen::AngleAxisd r_pitch(pitch, Eigen::Vector3d::UnitY());
   Eigen::AngleAxisd r_yaw(yaw, Eigen::Vector3d::UnitZ());
@@ -113,6 +119,12 @@ void EMcl2Node::initCommunication()
   pointcloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
     pointcloud_topic_, rclcpp::SensorDataQoS().keep_last(1),
     std::bind(&EMcl2Node::pointCloudCallback, this, std::placeholders::_1));
+
+  if (use_imu_yaw_) {
+    imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
+      imu_topic_, rclcpp::SensorDataQoS().keep_last(5),
+      std::bind(&EMcl2Node::imuCallback, this, std::placeholders::_1));
+  }
 }
 
 void EMcl2Node::initTF()
@@ -347,7 +359,24 @@ bool EMcl2Node::updateWithOdometry()
     return false;
   }
 
-  const double yaw = tf2::getYaw(tf.transform.rotation);
+  if (use_imu_yaw_) {
+    if (!have_imu_yaw_) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *this->get_clock(), 2000,
+        "IMU yaw not received yet.");
+      return false;
+    }
+    const auto now_time = this->now();
+    const double elapsed = (now_time - last_imu_time_).seconds();
+    if (elapsed > imu_timeout_) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *this->get_clock(), 2000,
+        "IMU yaw timeout: last=%.2f sec ago", elapsed);
+      return false;
+    }
+  }
+
+  const double yaw = use_imu_yaw_ ? last_imu_yaw_ : tf2::getYaw(tf.transform.rotation);
   Pose current(tf.transform.translation.x, tf.transform.translation.y, yaw);
 
   if (!have_last_odom_) {
@@ -522,6 +551,16 @@ void EMcl2Node::publishOutputs(const rclcpp::Time & stamp)
 
   tf_msg.transform = tf2::toMsg(t_map_odom);
   tf_broadcaster_->sendTransform(tf_msg);
+}
+
+void EMcl2Node::imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg)
+{
+  if (!msg) {
+    return;
+  }
+  last_imu_yaw_ = tf2::getYaw(msg->orientation);
+  last_imu_time_ = rclcpp::Time(msg->header.stamp);
+  have_imu_yaw_ = true;
 }
 
 }  // namespace emcl2

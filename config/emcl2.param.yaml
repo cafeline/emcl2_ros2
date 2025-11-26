@@ -6,6 +6,9 @@
     odom_frame_id: "odom"
     base_frame_id: "base_link"
     footprint_frame_id: "base_footprint"
+    imu_topic: "/imu/data"
+    imu_timeout: 1.0
+    use_imu_yaw: true
     laser_min_range: 0.0
     laser_max_range: 100000000.0
     scan_increment: 1

@@ -13,6 +13,7 @@
 
 #include <geometry_msgs/msg/pose_array.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <rclcpp/rclcpp.hpp>
@@ -48,6 +49,7 @@ private:
     void initTF();
     void loadMap();
     void initializeParticles();
+    void imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg);
 
     void pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
     void timerCallback();
@@ -71,7 +73,10 @@ private:
     std::string odom_frame_id_ {"odom"};
     std::string base_frame_id_ {"base_link"};
     std::string pointcloud_topic_ {"/pointcloud"};
+    std::string imu_topic_ {"/imu/data"};
     double transform_tolerance_ {0.2};
+    double imu_timeout_ {1.0};
+    bool use_imu_yaw_ {true};
     int odom_freq_ {20};
     bool map_loaded_ {false};
     bool map_receive_ {false};
@@ -82,6 +87,7 @@ private:
     std::mt19937 rng_;
 
     rclcpp::Subscription < sensor_msgs::msg::PointCloud2 > ::SharedPtr pointcloud_sub_;
+    rclcpp::Subscription < sensor_msgs::msg::Imu > ::SharedPtr imu_sub_;
     rclcpp::Subscription < geometry_msgs::msg::PoseWithCovarianceStamped > ::SharedPtr
     initial_pose_sub_;
     rclcpp::Publisher < geometry_msgs::msg::PoseArray > ::SharedPtr particle_pub_;
@@ -99,9 +105,12 @@ private:
     double total_update_measurement_sum_sq_us_ {0.0};
     std::deque<double> total_update_measurements_us_;
     bool have_last_odom_ {false};
+    bool have_imu_yaw_ {false};
     double init_x_ {0.0};
     double init_y_ {0.0};
     double init_t_ {0.0};
+    double last_imu_yaw_ {0.0};
+    rclcpp::Time last_imu_time_;
 
     double initial_pose_x_ {0.0};
     double initial_pose_y_ {0.0};
