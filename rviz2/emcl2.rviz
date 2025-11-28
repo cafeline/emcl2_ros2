@@ -4,7 +4,6 @@ Panels:
     Name: Displays
     Property Tree Widget:
       Expanded:
-        - /LaserScan1
         - /PointCloud21/Topic1
         - /MarkerArray3/Topic1
         - /MarkerArray4/Topic1
@@ -190,30 +189,6 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /local_path
-      Value: false
-    - Class: rviz_default_plugins/MarkerArray
-      Enabled: false
-      Name: DynamicObstacles
-      Namespaces:
-        {}
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /dynamic_obstacles
-      Value: false
-    - Class: rviz_default_plugins/MarkerArray
-      Enabled: false
-      Name: StaticObstacles
-      Namespaces:
-        {}
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /static_obstacles
       Value: false
     - Alpha: 1
       Axes Length: 1
@@ -408,37 +383,13 @@ Visualization Manager:
       Enabled: true
       Name: MarkerArray
       Namespaces:
-        {}
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /map_static_obstacles_markers
-      Value: true
-    - Class: rviz_default_plugins/MarkerArray
-      Enabled: true
-      Name: MarkerArray
-      Namespaces:
-        static_obstacles: true
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /static_obstacles_debug
-      Value: true
-    - Class: rviz_default_plugins/MarkerArray
-      Enabled: true
-      Name: MarkerArray
-      Namespaces:
         dynamic_obstacles: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /dynamic_obstacles_debug
+        Value: /obstacles
       Value: true
   Enabled: true
   Global Options:
@@ -486,16 +437,16 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 16.128442764282227
+      Distance: 24.962081909179688
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -0.9781860113143921
-        Y: -1.789212703704834
-        Z: 3.802802562713623
+        X: 0.3014586567878723
+        Y: 0.29029881954193115
+        Z: 3.8016884326934814
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false

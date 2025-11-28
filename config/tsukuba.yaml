@@ -76,17 +76,14 @@ pointcloud2_cutter:
 obstacle_tracker:
   ros__parameters:
     scan_topic: "/scan"
-    dynamic_topic: "/dynamic_obstacles"
-    static_topic: "/static_obstacles"
-    debug_dynamic_topic: "/dynamic_obstacles_debug"
-    debug_static_topic: "/static_obstacles_debug"
+    obstacles_topic: "/obstacles"
     target_frame: "map"
-    tf_timeout_sec: 0.05
+    tf_timeout_sec: 1.0
     processing_range: 10.0
-    range_jump_ratio: 0.1
+    range_jump_ratio: 0.05
     range_jump_min: 0.05
-    min_cluster_points: 3
-    range_gap_abs: 0.3
+    min_cluster_points: 2
+    range_gap_abs: 0.2
 
 tvvf_vo_c_node:
   ros__parameters:
