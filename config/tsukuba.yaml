@@ -34,6 +34,21 @@ emcl2:
     external_yaw_topic: "imu_yaw"
     external_yaw_timeout: 1.0
 
+imu_rpy_pose:
+  ros__parameters:
+    imu_topic: "livox/imu"
+    bias_sample_count: 1000
+    clip_enable: true
+    clip_max_rad_per_s: 10.0
+    lpf_enable: true
+    lpf_alpha: 0.2
+    dt_check_enable: true
+    dt_min: 0.003
+    dt_max: 0.006
+    marker_frame: "livox_frame"
+    marker_topic: "imu_arrow"
+    yaw_topic: "imu_yaw"
+
 pointcloud2_cutter:
   ros__parameters:
     input_pointcloud_topic: "/livox/lidar"

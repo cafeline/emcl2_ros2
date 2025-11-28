@@ -17,7 +17,7 @@ def generate_launch_description():
     pkg_pointcloud2 = get_package_share_directory('pointcloud2_cutter')
     pkg_raspicat_nav = get_package_share_directory('raspicat_tvvf_navigation')
     pkg_vq_server = get_package_share_directory('vq_server')
-    nav_params_path = os.path.join(pkg_emcl2, 'config', '19f.yaml')
+    nav_params_path = os.path.join(pkg_emcl2, 'config', 'tsukuba.yaml')
     use_sim_time = LaunchConfiguration('use_sim_time')
     rviz_enable = LaunchConfiguration('rviz')
     rviz_config_file = LaunchConfiguration('rviz_config_file')
@@ -29,7 +29,7 @@ def generate_launch_description():
 
     declare_use_sim_time = DeclareLaunchArgument(
         'use_sim_time',
-        default_value='true',
+        default_value='false',
         description='Use simulation time for all nodes')
     declare_rviz = DeclareLaunchArgument(
         'rviz',
@@ -47,35 +47,35 @@ def generate_launch_description():
         default_value=os.path.join(
             pkg_emcl2,
             'maps',
-            '19f_.h5'),
+            'tsukuba20251004_vram8gb.h5'),
         description='HDF5 map used by emcl2 localization')
     declare_regions_config = DeclareLaunchArgument(
         'regions_config_file',
         default_value=os.path.join(
             pkg_pointcloud2,
             'config',
-            'a.yaml'),
+            'tsukuba_regions.yaml'),
         description='Pointcloud2 cutter regions configuration')
     declare_waypoint_csv = DeclareLaunchArgument(
         'waypoint_csv_file',
         default_value=os.path.join(
             pkg_raspicat_nav,
             'maps',
-            '19f_WP.csv'),
+            'tsukuba_WP_1.csv'),
         description='Waypoint CSV for waypoint follower')
     declare_map_yaml = DeclareLaunchArgument(
         'map_yaml_file',
         default_value=os.path.join(
             pkg_raspicat_nav,
             'maps',
-            '19f.yaml'),
+            'navigation_map_2_edge_stopline.yaml'),
         description='Occupancy grid YAML for simple_map_server')
     declare_vq_map = DeclareLaunchArgument(
         'vq_map_file',
         default_value=os.path.join(
             pkg_vq_server,
             'maps',
-            '19f_.h5'),
+            'tsukuba20251004_vram8gb_voxel05.h5'),
         description='HDF5 map file for vq_server')
 
     with open(nav_params_path, 'r', encoding='utf-8') as f:
@@ -140,41 +140,35 @@ def generate_launch_description():
                         parameters=[params_file],
                         output='screen'),
                     Node(
-                        package='imu_rpy_pose',
-                        executable='imu_rpy_pose_node',
-                        name='imu_rpy_pose',
-                        parameters=[params_file],
-                        output='screen'),
-                    Node(
                         name='emcl2',
                         package='emcl2',
                         executable='emcl2_node',
                         parameters=[params_file],
                         output='screen'),
-                    # Node(
-                    #     package='obstacle_tracker',
-                    #     executable='obstacle_tracker',
-                    #     name='obstacle_tracker',
-                    #     parameters=[params_file,  {'use_sim_time': False}],
-                    #     output='screen'),
-                    # Node(
-                    #     package='tvvf_vo_c',
-                    #     executable='tvvf_vo_c_node',
-                    #     name='tvvf_vo_c_node',
-                    #     parameters=[params_file],
-                    #     output='screen'),
-                    # Node(
-                    #     package='velocity_smoother',
-                    #     executable='velocity_smoother',
-                    #     name='velocity_smoother',
-                    #     parameters=[params_file],
-                    #     output='screen'),
-                    # Node(
-                    #     package='raspicat_tvvf_navigation',
-                    #     executable='waypoint_follower_node',
-                    #     name='waypoint_follower_node',
-                    #     parameters=[params_file],
-                    #     output='screen'),
+                    Node(
+                        package='obstacle_tracker',
+                        executable='obstacle_tracker',
+                        name='obstacle_tracker',
+                        parameters=[params_file,  {'use_sim_time': False}],
+                        output='screen'),
+                    Node(
+                        package='tvvf_vo_c',
+                        executable='tvvf_vo_c_node',
+                        name='tvvf_vo_c_node',
+                        parameters=[params_file],
+                        output='screen'),
+                    Node(
+                        package='velocity_smoother',
+                        executable='velocity_smoother',
+                        name='velocity_smoother',
+                        parameters=[params_file],
+                        output='screen'),
+                    Node(
+                        package='raspicat_tvvf_navigation',
+                        executable='waypoint_follower_node',
+                        name='waypoint_follower_node',
+                        parameters=[params_file],
+                        output='screen'),
                     Node(
                         package='rviz2',
                         executable='rviz2',
@@ -183,6 +177,12 @@ def generate_launch_description():
                         arguments=['-d', rviz_config_file],
                         condition=IfCondition(rviz_enable)
                     ),
+                    Node(
+                        package='imu_rpy_pose',
+                        executable='imu_rpy_pose_node',
+                        name='imu_rpy_pose',
+                        parameters=[params_file],
+                        output='screen'),
                 ]
             )
         ]
