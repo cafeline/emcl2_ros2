@@ -31,9 +31,8 @@ emcl2:
     odom_fw_dev_per_rot: 0.0001
     odom_rot_dev_per_fw: 0.13
     odom_rot_dev_per_rot: 0.2
-    imu_topic: "livox/imu"
-    imu_timeout: 100.0
-    use_imu_yaw: true
+    external_yaw_topic: "imu_yaw"
+    external_yaw_timeout: 1.0
 
 pointcloud2_cutter:
   ros__parameters:

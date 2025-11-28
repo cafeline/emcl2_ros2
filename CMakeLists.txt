@@ -23,7 +23,6 @@ set(EMCL2_CORE_SOURCES
   src/Particle.cpp
   src/Mcl.cpp
   src/OdomModel.cpp
-  src/ImuYawEstimator.cpp
   src/emcl2_node.cpp
 )
 
@@ -99,17 +98,10 @@ if(BUILD_TESTING)
     ${HDF5_HL_LIBRARIES}
   )
 
-  ament_add_gtest(test_imu_yaw_estimator
-    test/test_imu_yaw_estimator.cpp
+  ament_add_gtest(test_external_yaw_manager
+    test/test_external_yaw_manager.cpp
   )
-  target_link_libraries(test_imu_yaw_estimator
-    emcl2_core
-  )
-
-  ament_add_gtest(test_odom_yaw_gate
-    test/test_odom_yaw_gate.cpp
-  )
-  target_link_libraries(test_odom_yaw_gate
+  target_link_libraries(test_external_yaw_manager
     emcl2_core
   )
 

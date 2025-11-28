@@ -4,15 +4,14 @@
 // CAUTION: Some lines came from amcl (LGPL).
 
 #include "emcl2/emcl2_node.h"
-#include "emcl2/OdomYawGate.h"
 
 #include <geometry_msgs/msg/transform_stamped.hpp>
+#include <std_msgs/msg/float64.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Transform.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2/utils.h>
-#include <visualization_msgs/msg/marker.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -27,6 +26,7 @@ EMcl2Node::EMcl2Node()
     std::chrono::steady_clock::now())
 {
   declareParameter();
+  last_external_yaw_time_ = this->now();
   loadMap();
   initializeParticles();
   initTF();
@@ -66,19 +66,8 @@ void EMcl2Node::declareParameter()
   this->declare_parameter("sensor_roll", 0.0);
   this->declare_parameter("sensor_pitch", 0.0);
   this->declare_parameter("sensor_yaw", 0.0);
-  this->declare_parameter("imu_topic", imu_topic_);
-  this->declare_parameter("imu_timeout", imu_timeout_);
-  this->declare_parameter("use_imu_yaw", use_imu_yaw_);
-  this->declare_parameter("imu_yaw_marker_enable", imu_yaw_marker_enable_);
-  this->declare_parameter("imu_yaw_marker_topic", imu_yaw_marker_topic_);
-  this->declare_parameter("imu_yaw_bias_sample_count", imu_yaw_params_.bias_sample_count);
-  this->declare_parameter("imu_yaw_clip_enable", imu_yaw_params_.clip_enable);
-  this->declare_parameter("imu_yaw_clip_max_rad_per_s", imu_yaw_params_.clip_max_rad_per_s);
-  this->declare_parameter("imu_yaw_lpf_enable", imu_yaw_params_.lpf_enable);
-  this->declare_parameter("imu_yaw_lpf_alpha", imu_yaw_params_.lpf_alpha);
-  this->declare_parameter("imu_yaw_dt_check_enable", imu_yaw_params_.dt_check_enable);
-  this->declare_parameter("imu_yaw_dt_min", imu_yaw_params_.dt_min);
-  this->declare_parameter("imu_yaw_dt_max", imu_yaw_params_.dt_max);
+  this->declare_parameter("external_yaw_topic", external_yaw_topic_);
+  this->declare_parameter("external_yaw_timeout", external_yaw_timeout_);
 
   this->declare_parameter("odom_fw_dev_per_fw", odom_noise_ff_);
   this->declare_parameter("odom_fw_dev_per_rot", odom_noise_fr_);
@@ -112,43 +101,20 @@ void EMcl2Node::declareParameter()
   const double roll = this->get_parameter("sensor_roll").as_double();
   const double pitch = this->get_parameter("sensor_pitch").as_double();
   const double yaw = this->get_parameter("sensor_yaw").as_double();
-  imu_topic_ = this->get_parameter("imu_topic").as_string();
-  imu_timeout_ = this->get_parameter("imu_timeout").as_double();
-  use_imu_yaw_ = this->get_parameter("use_imu_yaw").as_bool();
-  if (!use_imu_yaw_) {
-    throw rclcpp::exceptions::InvalidParametersException(
-            "'use_imu_yaw' must be true because IMU yaw is mandatory");
-  }
-  imu_yaw_marker_enable_ = this->get_parameter("imu_yaw_marker_enable").as_bool();
-  imu_yaw_marker_topic_ = this->get_parameter("imu_yaw_marker_topic").as_string();
-  imu_yaw_params_.bias_sample_count = this->get_parameter("imu_yaw_bias_sample_count").as_int();
-  imu_yaw_params_.clip_enable = this->get_parameter("imu_yaw_clip_enable").as_bool();
-  imu_yaw_params_.clip_max_rad_per_s =
-    this->get_parameter("imu_yaw_clip_max_rad_per_s").as_double();
-  imu_yaw_params_.lpf_enable = this->get_parameter("imu_yaw_lpf_enable").as_bool();
-  imu_yaw_params_.lpf_alpha = this->get_parameter("imu_yaw_lpf_alpha").as_double();
-  imu_yaw_params_.dt_check_enable = this->get_parameter("imu_yaw_dt_check_enable").as_bool();
-  imu_yaw_params_.dt_min = this->get_parameter("imu_yaw_dt_min").as_double();
-  imu_yaw_params_.dt_max = this->get_parameter("imu_yaw_dt_max").as_double();
-  imu_yaw_estimator_.setParams(imu_yaw_params_);
-  imu_yaw_estimator_.resetAll();
-  have_imu_yaw_ = false;
-  imu_bias_ready_announced_ = false;
+  external_yaw_topic_ = this->get_parameter("external_yaw_topic").as_string();
+  external_yaw_timeout_ = this->get_parameter("external_yaw_timeout").as_double();
   Eigen::AngleAxisd r_roll(roll, Eigen::Vector3d::UnitX());
   Eigen::AngleAxisd r_pitch(pitch, Eigen::Vector3d::UnitY());
   Eigen::AngleAxisd r_yaw(yaw, Eigen::Vector3d::UnitZ());
   observation_template_.sensor_rotation = r_yaw * r_pitch * r_roll;
 
+  yaw_manager_.setTargetYaw(initial_pose_yaw_);
 }
 
 void EMcl2Node::initCommunication()
 {
   particle_pub_ = this->create_publisher<geometry_msgs::msg::PoseArray>("particlecloud", 1);
   pose_pub_ = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("mcl_pose", 1);
-  if (imu_yaw_marker_enable_) {
-    imu_marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>(
-      imu_yaw_marker_topic_, rclcpp::QoS(1).transient_local());
-  }
 
   initial_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
     "initialpose", rclcpp::QoS(rclcpp::KeepLast(1)),
@@ -158,11 +124,9 @@ void EMcl2Node::initCommunication()
     pointcloud_topic_, rclcpp::SensorDataQoS().keep_last(1),
     std::bind(&EMcl2Node::pointCloudCallback, this, std::placeholders::_1));
 
-  if (use_imu_yaw_) {
-    imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
-      imu_topic_, rclcpp::SensorDataQoS().keep_last(5),
-      std::bind(&EMcl2Node::imuCallback, this, std::placeholders::_1));
-  }
+  yaw_sub_ = this->create_subscription<std_msgs::msg::Float64>(
+    external_yaw_topic_, rclcpp::SensorDataQoS().keep_last(5),
+    std::bind(&EMcl2Node::yawCallback, this, std::placeholders::_1));
 }
 
 void EMcl2Node::initTF()
@@ -230,11 +194,7 @@ void EMcl2Node::initialPoseReceived(
   init_x_ = msg->pose.pose.position.x;
   init_y_ = msg->pose.pose.position.y;
   init_t_ = tf2::getYaw(msg->pose.pose.orientation);
-
-  imu_yaw_estimator_.resetOrientation(init_t_);
-  last_imu_yaw_ = init_t_;
-  have_imu_yaw_ = imu_yaw_estimator_.biasReady();
-  last_imu_time_ = this->now();
+  yaw_manager_.applyInitialPose(init_t_);
 
   if (!initialpose_receive_) {
     if (scan_receive_ && map_receive_) {
@@ -402,31 +362,21 @@ bool EMcl2Node::updateWithOdometry()
     return false;
   }
 
-  const double odom_yaw = tf2::getYaw(tf.transform.rotation);
-  const double imu_elapsed = (this->now() - last_imu_time_).seconds();
-  ImuYawGateInput yaw_input;
-  yaw_input.use_imu_yaw = use_imu_yaw_;
-  yaw_input.have_imu_yaw = have_imu_yaw_;
-  yaw_input.time_since_last_imu = imu_elapsed;
-  yaw_input.imu_timeout = imu_timeout_;
-  yaw_input.imu_yaw = last_imu_yaw_;
-  yaw_input.odom_yaw = odom_yaw;
-
-  double yaw = 0.0;
-  bool used_imu = false;
-  const bool yaw_ready = selectYaw(yaw_input, yaw, used_imu);
-  if (!yaw_ready || !used_imu) {
-    if (!have_imu_yaw_) {
-      RCLCPP_WARN_THROTTLE(
-        get_logger(), *this->get_clock(), 2000,
-        "IMU yaw not received yet; skipping odometry update.");
-    } else {
-      RCLCPP_WARN_THROTTLE(
-        get_logger(), *this->get_clock(), 2000,
-        "IMU yaw timeout: last=%.2f sec ago; skipping odometry update", imu_elapsed);
-    }
+  if (!yaw_manager_.ready()) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *this->get_clock(), 2000,
+      "External yaw not received yet; skipping odometry update.");
     return false;
   }
+  const double yaw_elapsed = (this->now() - last_external_yaw_time_).seconds();
+  if (yaw_elapsed > external_yaw_timeout_) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *this->get_clock(), 2000,
+      "External yaw timeout: last=%.2f sec ago; skipping odometry update", yaw_elapsed);
+    return false;
+  }
+
+  const double yaw = yaw_manager_.yaw();
 
   Pose current(tf.transform.translation.x, tf.transform.translation.y, yaw);
 
@@ -444,8 +394,8 @@ bool EMcl2Node::updateWithOdometry()
   double length = 0.0;
   double direction = 0.0;
   if (odom_straight_only_) {
-    length = delta.x_ * std::cos(last_odom_pose_.t_) +
-      delta.y_ * std::sin(last_odom_pose_.t_);
+    const double yaw_proj = yaw_manager_.yaw();
+    length = delta.x_ * std::cos(yaw_proj) + delta.y_ * std::sin(yaw_proj);
     direction = 0.0;
   } else {
     length = std::sqrt(delta.x_ * delta.x_ + delta.y_ * delta.y_);
@@ -612,100 +562,15 @@ void EMcl2Node::publishOutputs(const rclcpp::Time & stamp)
   tf_broadcaster_->sendTransform(tf_msg);
 }
 
-void EMcl2Node::imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg)
+void EMcl2Node::yawCallback(const std_msgs::msg::Float64::SharedPtr msg)
 {
-  RCLCPP_INFO(get_logger(), "IMU callback triggered");
   if (!msg) {
     return;
   }
-  Eigen::Vector3d gyro(
-    msg->angular_velocity.x,
-    msg->angular_velocity.y,
-    msg->angular_velocity.z);
-  Eigen::Vector3d acc(
-    msg->linear_acceleration.x,
-    msg->linear_acceleration.y,
-    msg->linear_acceleration.z);
-
-  const rclcpp::Time stamp(msg->header.stamp);
-  const bool updated = imu_yaw_estimator_.process(stamp, gyro, acc);
-
-  if (imu_yaw_estimator_.biasReady() && !imu_bias_ready_announced_) {
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "#####################################");
-	  RCLCPP_INFO(get_logger(), "IMUのキャリブレーションが完了しました");
-	  imu_bias_ready_announced_ = true;
-  }
-
-  if (!updated) {
-    return;
-  }
-
-  last_imu_yaw_ = imu_yaw_estimator_.yaw();
-  last_imu_time_ = stamp;
-  have_imu_yaw_ = imu_yaw_estimator_.biasReady();
-
-  if (imu_yaw_marker_enable_ && imu_marker_pub_) {
-    geometry_msgs::msg::TransformStamped tf_map_base;
-    try {
-      tf_map_base = tf_buffer_->lookupTransform(
-        map_frame_id_, base_frame_id_, tf2::TimePointZero);
-    } catch (const tf2::TransformException & ex) {
-      RCLCPP_WARN_THROTTLE(
-        get_logger(), *this->get_clock(), 2000,
-        "IMU marker TF lookup failed: %s", ex.what());
-      return;
-    }
-
-    visualization_msgs::msg::Marker marker;
-    marker.header.stamp = stamp;
-    marker.header.frame_id = map_frame_id_;
-    marker.ns = "imu_yaw";
-    marker.id = 0;
-    marker.type = visualization_msgs::msg::Marker::ARROW;
-    marker.action = visualization_msgs::msg::Marker::ADD;
-    marker.pose.position.x = tf_map_base.transform.translation.x;
-    marker.pose.position.y = tf_map_base.transform.translation.y;
-    marker.pose.position.z = tf_map_base.transform.translation.z;
-
-    tf2::Quaternion q;
-    q.setRPY(0.0, 0.0, last_imu_yaw_);
-    marker.pose.orientation = tf2::toMsg(q);
-
-    marker.scale.x = 0.4;
-    marker.scale.y = 0.08;
-    marker.scale.z = 0.08;
-    marker.color.a = 1.0;
-    marker.color.r = 0.1;
-    marker.color.g = 0.6;
-    marker.color.b = 0.9;
-    marker.lifetime = rclcpp::Duration(0, 0);
-    imu_marker_pub_->publish(marker);
-  }
+  last_external_yaw_ = msg->data;
+  last_external_yaw_time_ = this->now();
+  yaw_manager_.updateMeasurement(last_external_yaw_);
+  have_external_yaw_ = yaw_manager_.haveMeasurement();
 }
 
 }  // namespace emcl2

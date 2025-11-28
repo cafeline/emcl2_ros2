@@ -140,6 +140,12 @@ def generate_launch_description():
                         parameters=[params_file],
                         output='screen'),
                     Node(
+                        package='imu_rpy_pose',
+                        executable='imu_rpy_pose_node',
+                        name='imu_rpy_pose',
+                        parameters=[params_file],
+                        output='screen'),
+                    Node(
                         name='emcl2',
                         package='emcl2',
                         executable='emcl2_node',

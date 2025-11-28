@@ -29,6 +29,8 @@ emcl2:
     odom_fw_dev_per_rot: 0.0001
     odom_rot_dev_per_fw: 0.13
     odom_rot_dev_per_rot: 0.2
+    external_yaw_topic: "imu_yaw"
+    external_yaw_timeout: 1.0
     laser_likelihood_max_dist: 0.2
     laser_min_range: 0.0
     laser_max_range: 100000000.0
