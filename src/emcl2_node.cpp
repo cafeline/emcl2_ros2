@@ -394,8 +394,7 @@ bool EMcl2Node::updateWithOdometry()
   double length = 0.0;
   double direction = 0.0;
   if (odom_straight_only_) {
-    const double yaw_proj = yaw_manager_.yaw();
-    length = delta.x_ * std::cos(yaw_proj) + delta.y_ * std::sin(yaw_proj);
+    length = delta.x_;  // odomを機体前後距離のみとみなし、そのまま符号付きで使用
     direction = 0.0;
   } else {
     length = std::sqrt(delta.x_ * delta.x_ + delta.y_ * delta.y_);
