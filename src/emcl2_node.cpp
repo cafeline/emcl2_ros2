@@ -4,6 +4,7 @@
 // CAUTION: Some lines came from amcl (LGPL).
 
 #include "emcl2/emcl2_node.h"
+#include "emcl2/OdomYawGate.h"
 
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
@@ -50,6 +51,7 @@ void EMcl2Node::declareParameter()
   this->declare_parameter("map_hdf5_path", std::string(""));
   this->declare_parameter("odom_freq", odom_freq_);
   this->declare_parameter("transform_tolerance", transform_tolerance_);
+  this->declare_parameter("odom_straight_only", odom_straight_only_);
 
   this->declare_parameter("num_particles", num_particles_);
   this->declare_parameter("initial_pose_x", initial_pose_x_);
@@ -89,6 +91,7 @@ void EMcl2Node::declareParameter()
   pointcloud_topic_ = this->get_parameter("pointcloud_topic").as_string();
   odom_freq_ = this->get_parameter("odom_freq").as_int();
   transform_tolerance_ = this->get_parameter("transform_tolerance").as_double();
+  odom_straight_only_ = this->get_parameter("odom_straight_only").as_bool();
 
   num_particles_ = this->get_parameter("num_particles").as_int();
   initial_pose_x_ = this->get_parameter("initial_pose_x").as_double();
@@ -112,6 +115,10 @@ void EMcl2Node::declareParameter()
   imu_topic_ = this->get_parameter("imu_topic").as_string();
   imu_timeout_ = this->get_parameter("imu_timeout").as_double();
   use_imu_yaw_ = this->get_parameter("use_imu_yaw").as_bool();
+  if (!use_imu_yaw_) {
+    throw rclcpp::exceptions::InvalidParametersException(
+            "'use_imu_yaw' must be true because IMU yaw is mandatory");
+  }
   imu_yaw_marker_enable_ = this->get_parameter("imu_yaw_marker_enable").as_bool();
   imu_yaw_marker_topic_ = this->get_parameter("imu_yaw_marker_topic").as_string();
   imu_yaw_params_.bias_sample_count = this->get_parameter("imu_yaw_bias_sample_count").as_int();
@@ -325,17 +332,17 @@ void EMcl2Node::pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPt
   filter_->sensorUpdate(map_, observation);
   const auto sensor_update_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
     std::chrono::steady_clock::now() - t_start_su);
-  RCLCPP_INFO(
-    get_logger(), "sensor update : %.3f ms",
-    static_cast<double>(sensor_update_elapsed.count()) / 1000.0);
+  // RCLCPP_INFO(
+  //   get_logger(), "sensor update : %.3f ms",
+  //   static_cast<double>(sensor_update_elapsed.count()) / 1000.0);
 
   filter_->normalizeWeights();
   filter_->resample(rng_);
   const auto total_update_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
     std::chrono::steady_clock::now() - t_start);
-  RCLCPP_INFO(
-    get_logger(), "MCL update: %.3f ms",
-    static_cast<double>(total_update_elapsed.count()) / 1000.0);
+  // RCLCPP_INFO(
+  //   get_logger(), "MCL update: %.3f ms",
+  //   static_cast<double>(total_update_elapsed.count()) / 1000.0);
   const auto now_time = std::chrono::steady_clock::now();
   if (!total_update_measurement_started_ &&
     now_time - node_start_time_ >= std::chrono::seconds(10))
@@ -395,28 +402,32 @@ bool EMcl2Node::updateWithOdometry()
     return false;
   }
 
-  bool imu_yaw_valid = false;
-  double yaw_from_imu = last_imu_yaw_;
-  if (use_imu_yaw_) {
+  const double odom_yaw = tf2::getYaw(tf.transform.rotation);
+  const double imu_elapsed = (this->now() - last_imu_time_).seconds();
+  ImuYawGateInput yaw_input;
+  yaw_input.use_imu_yaw = use_imu_yaw_;
+  yaw_input.have_imu_yaw = have_imu_yaw_;
+  yaw_input.time_since_last_imu = imu_elapsed;
+  yaw_input.imu_timeout = imu_timeout_;
+  yaw_input.imu_yaw = last_imu_yaw_;
+  yaw_input.odom_yaw = odom_yaw;
+
+  double yaw = 0.0;
+  bool used_imu = false;
+  const bool yaw_ready = selectYaw(yaw_input, yaw, used_imu);
+  if (!yaw_ready || !used_imu) {
     if (!have_imu_yaw_) {
       RCLCPP_WARN_THROTTLE(
         get_logger(), *this->get_clock(), 2000,
-        "IMU yaw not received yet; falling back to odometry yaw.");
+        "IMU yaw not received yet; skipping odometry update.");
     } else {
-      const auto now_time = this->now();
-      const double elapsed = (now_time - last_imu_time_).seconds();
-      if (elapsed > imu_timeout_) {
-        RCLCPP_WARN_THROTTLE(
-          get_logger(), *this->get_clock(), 2000,
-          "IMU yaw timeout: last=%.2f sec ago; falling back to odometry yaw", elapsed);
-      } else {
-        imu_yaw_valid = true;
-      }
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *this->get_clock(), 2000,
+        "IMU yaw timeout: last=%.2f sec ago; skipping odometry update", imu_elapsed);
     }
+    return false;
   }
 
-  const double yaw =
-    (use_imu_yaw_ && imu_yaw_valid) ? yaw_from_imu : tf2::getYaw(tf.transform.rotation);
   Pose current(tf.transform.translation.x, tf.transform.translation.y, yaw);
 
   if (!have_last_odom_) {
@@ -430,9 +441,17 @@ bool EMcl2Node::updateWithOdometry()
     return false;
   }
 
-  const double length = std::sqrt(delta.x_ * delta.x_ + delta.y_ * delta.y_);
-  const double direction = std::atan2(delta.y_, delta.x_) - last_odom_pose_.t_;
-  odom_model_->setDev(length, delta.t_);
+  double length = 0.0;
+  double direction = 0.0;
+  if (odom_straight_only_) {
+    length = delta.x_ * std::cos(last_odom_pose_.t_) +
+      delta.y_ * std::sin(last_odom_pose_.t_);
+    direction = 0.0;
+  } else {
+    length = std::sqrt(delta.x_ * delta.x_ + delta.y_ * delta.y_);
+    direction = std::atan2(delta.y_, delta.x_) - last_odom_pose_.t_;
+  }
+  odom_model_->setDev(std::fabs(length), delta.t_);
 
   for (auto & particle : filter_->particles()) {
     particle.pose().move(
@@ -595,6 +614,7 @@ void EMcl2Node::publishOutputs(const rclcpp::Time & stamp)
 
 void EMcl2Node::imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg)
 {
+  RCLCPP_INFO(get_logger(), "IMU callback triggered");
   if (!msg) {
     return;
   }
@@ -611,8 +631,34 @@ void EMcl2Node::imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg)
   const bool updated = imu_yaw_estimator_.process(stamp, gyro, acc);
 
   if (imu_yaw_estimator_.biasReady() && !imu_bias_ready_announced_) {
-    RCLCPP_INFO(get_logger(), "IMUジャイロバイアスのキャリブレーションが完了しました");
-    imu_bias_ready_announced_ = true;
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "#####################################");
+	  RCLCPP_INFO(get_logger(), "IMUのキャリブレーションが完了しました");
+	  imu_bias_ready_announced_ = true;
   }
 
   if (!updated) {

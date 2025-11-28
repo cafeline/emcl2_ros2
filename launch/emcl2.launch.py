@@ -54,14 +54,14 @@ def generate_launch_description():
         default_value=os.path.join(
             pkg_pointcloud2,
             'config',
-            'tsukuba_regions.yaml'),
+            'a.yaml'),
         description='Pointcloud2 cutter regions configuration')
     declare_waypoint_csv = DeclareLaunchArgument(
         'waypoint_csv_file',
         default_value=os.path.join(
             pkg_raspicat_nav,
             'maps',
-            'tsukuba_WP_1.csv'),
+            '19f_WP.csv'),
         description='Waypoint CSV for waypoint follower')
     declare_map_yaml = DeclareLaunchArgument(
         'map_yaml_file',

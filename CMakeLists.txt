@@ -106,6 +106,13 @@ if(BUILD_TESTING)
     emcl2_core
   )
 
+  ament_add_gtest(test_odom_yaw_gate
+    test/test_odom_yaw_gate.cpp
+  )
+  target_link_libraries(test_odom_yaw_gate
+    emcl2_core
+  )
+
 endif()
 
 install(PROGRAMS

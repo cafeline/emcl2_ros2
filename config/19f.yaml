@@ -13,6 +13,7 @@ emcl2:
     pointcloud_topic: "/pointcloud/cut"
     map_hdf5_path: "/home/user/navigation_ws/install/share/emcl2/maps/tsukuba20251004_vram8gb.h5"
     transform_tolerance: 0.2
+    odom_straight_only: true
     odom_freq: 10
     num_particles: 1000
     initial_pose_x: 32.43
@@ -35,12 +36,12 @@ emcl2:
     use_imu_yaw: true
     imu_yaw_marker_enable: true
     imu_yaw_marker_topic: "imu_yaw_marker"
-    imu_yaw_bias_sample_count: 1000
+    imu_yaw_bias_sample_count: 10
     imu_yaw_clip_enable: true
     imu_yaw_clip_max_rad_per_s: 5.0
     imu_yaw_lpf_enable: true
     imu_yaw_lpf_alpha: 0.2
-    imu_yaw_dt_check_enable: true
+    imu_yaw_dt_check_enable: false
     imu_yaw_dt_min: 0.002
     imu_yaw_dt_max: 0.008
 

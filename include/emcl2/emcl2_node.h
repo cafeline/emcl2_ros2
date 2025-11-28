@@ -79,6 +79,7 @@ private:
     std::string imu_yaw_marker_topic_ {"imu_yaw_marker"};
     double transform_tolerance_ {0.2};
     double imu_timeout_ {1.0};
+    bool odom_straight_only_ {true};
     bool use_imu_yaw_ {true};
     bool imu_yaw_marker_enable_ {true};
     ImuYawParams imu_yaw_params_;

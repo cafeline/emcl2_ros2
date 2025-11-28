@@ -2,6 +2,7 @@
   ros__parameters:
     odom_freq: 20
     transform_tolerance: 0.2
+    odom_straight_only: true
     global_frame_id: "map"
     odom_frame_id: "odom"
     base_frame_id: "base_link"

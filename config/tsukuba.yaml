@@ -13,6 +13,7 @@ emcl2:
     pointcloud_topic: "/pointcloud/cut"
     map_hdf5_path: "/home/user/navigation_ws/install/share/emcl2/maps/tsukuba20251004_vram8gb.h5"
     transform_tolerance: 0.2
+    odom_straight_only: true
     odom_freq: 10
     num_particles: 1000
     initial_pose_x: 32.43
