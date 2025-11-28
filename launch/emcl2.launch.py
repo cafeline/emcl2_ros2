@@ -17,7 +17,7 @@ def generate_launch_description():
     pkg_pointcloud2 = get_package_share_directory('pointcloud2_cutter')
     pkg_raspicat_nav = get_package_share_directory('raspicat_tvvf_navigation')
     pkg_vq_server = get_package_share_directory('vq_server')
-    nav_params_path = os.path.join(pkg_emcl2, 'config', 'tsukuba.yaml')
+    nav_params_path = os.path.join(pkg_emcl2, 'config', '19f.yaml')
     use_sim_time = LaunchConfiguration('use_sim_time')
     rviz_enable = LaunchConfiguration('rviz')
     rviz_config_file = LaunchConfiguration('rviz_config_file')

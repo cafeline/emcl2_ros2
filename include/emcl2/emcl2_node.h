@@ -10,11 +10,13 @@
 #include "emcl2/Mcl.h"
 #include "emcl2/OdomModel.h"
 #include "emcl2/PointCloudObservation.h"
+#include "emcl2/ImuYawEstimator.h"
 
 #include <geometry_msgs/msg/pose_array.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <visualization_msgs/msg/marker.hpp>
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -74,9 +76,14 @@ private:
     std::string base_frame_id_ {"base_link"};
     std::string pointcloud_topic_ {"/pointcloud"};
     std::string imu_topic_ {"/imu/data"};
+    std::string imu_yaw_marker_topic_ {"imu_yaw_marker"};
     double transform_tolerance_ {0.2};
     double imu_timeout_ {1.0};
     bool use_imu_yaw_ {true};
+    bool imu_yaw_marker_enable_ {true};
+    ImuYawParams imu_yaw_params_;
+    ImuYawEstimator imu_yaw_estimator_ {imu_yaw_params_};
+    bool imu_bias_ready_announced_ {false};
     int odom_freq_ {20};
     bool map_loaded_ {false};
     bool map_receive_ {false};
@@ -92,6 +99,7 @@ private:
     initial_pose_sub_;
     rclcpp::Publisher < geometry_msgs::msg::PoseArray > ::SharedPtr particle_pub_;
     rclcpp::Publisher < geometry_msgs::msg::PoseWithCovarianceStamped > ::SharedPtr pose_pub_;
+    rclcpp::Publisher < visualization_msgs::msg::Marker > ::SharedPtr imu_marker_pub_;
 
     std::shared_ptr < tf2_ros::Buffer > tf_buffer_;
     std::shared_ptr < tf2_ros::TransformListener > tf_listener_;
@@ -103,7 +111,7 @@ private:
     bool total_update_measurement_started_ {false};
     double total_update_measurement_sum_us_ {0.0};
     double total_update_measurement_sum_sq_us_ {0.0};
-    std::deque<double> total_update_measurements_us_;
+    std::deque < double > total_update_measurements_us_;
     bool have_last_odom_ {false};
     bool have_imu_yaw_ {false};
     double init_x_ {0.0};

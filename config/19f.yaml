@@ -3,7 +3,7 @@
 
 /**:
   ros__parameters:
-    use_sim_time: true
+    use_sim_time: false
 
 emcl2:
   ros__parameters:
@@ -33,6 +33,16 @@ emcl2:
     imu_topic: "livox/imu"
     imu_timeout: 100.0
     use_imu_yaw: true
+    imu_yaw_marker_enable: true
+    imu_yaw_marker_topic: "imu_yaw_marker"
+    imu_yaw_bias_sample_count: 1000
+    imu_yaw_clip_enable: true
+    imu_yaw_clip_max_rad_per_s: 5.0
+    imu_yaw_lpf_enable: true
+    imu_yaw_lpf_alpha: 0.2
+    imu_yaw_dt_check_enable: true
+    imu_yaw_dt_min: 0.002
+    imu_yaw_dt_max: 0.008
 
 pointcloud2_cutter:
   ros__parameters:
@@ -53,10 +63,10 @@ pointcloud2_cutter:
     scan_angle_increment: 0.005
     scan_range_min: 0.05
     scan_range_max: 10.0
-    default_laser_height_min: 2.0
-    default_laser_height_max: 50.0
+    default_laser_height_min: 0.0
+    default_laser_height_max: 2.0
     max_filtered_points: 3000
-    regions_config_path: "/home/user/navigation_ws/install/share/pointcloud2_cutter/config/tsukuba_regions.yaml"
+    regions_config_path: ""
 
 obstacle_tracker:
   ros__parameters:
