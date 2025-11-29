@@ -105,6 +105,16 @@ if(BUILD_TESTING)
     emcl2_core
   )
 
+  ament_add_gtest(test_yaw_from_tf
+    test/test_yaw_from_tf.cpp
+  )
+  target_link_libraries(test_yaw_from_tf
+    emcl2_core
+  )
+  ament_target_dependencies(test_yaw_from_tf
+    tf2
+  )
+
 endif()
 
 install(PROGRAMS

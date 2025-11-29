@@ -31,7 +31,7 @@ emcl2:
     odom_fw_dev_per_rot: 0.0001
     odom_rot_dev_per_fw: 0.13
     odom_rot_dev_per_rot: 0.2
-    external_yaw_topic: "imu_yaw"
+    external_yaw_child_frame: "imu_heading"
     external_yaw_timeout: 1.0
 
 imu_rpy_pose:
@@ -47,7 +47,9 @@ imu_rpy_pose:
     dt_max: 0.006
     marker_frame: "livox_frame"
     marker_topic: "imu_arrow"
-    yaw_topic: "imu_yaw"
+    publish_yaw_tf: true
+    yaw_tf_parent_frame: "odom"
+    yaw_tf_child_frame: "imu_heading"
 
 pointcloud2_cutter:
   ros__parameters:

@@ -11,11 +11,11 @@
 #include "emcl2/OdomModel.h"
 #include "emcl2/PointCloudObservation.h"
 #include "emcl2/ExternalYawManager.h"
+#include "emcl2/yaw_from_tf.h"
 
 #include <geometry_msgs/msg/pose_array.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
-#include <std_msgs/msg/float64.hpp>
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -50,7 +50,6 @@ private:
     void initTF();
     void loadMap();
     void initializeParticles();
-    void yawCallback(const std_msgs::msg::Float64::SharedPtr msg);
 
     void pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
     void timerCallback();
@@ -74,7 +73,7 @@ private:
     std::string odom_frame_id_ {"odom"};
     std::string base_frame_id_ {"base_link"};
     std::string pointcloud_topic_ {"/pointcloud"};
-    std::string external_yaw_topic_ {"imu_yaw"};
+    std::string external_yaw_child_frame_ {"imu_heading"};
     double transform_tolerance_ {0.2};
     double external_yaw_timeout_ {1.0};
     bool odom_straight_only_ {true};
@@ -89,7 +88,6 @@ private:
     std::mt19937 rng_;
 
     rclcpp::Subscription < sensor_msgs::msg::PointCloud2 > ::SharedPtr pointcloud_sub_;
-    rclcpp::Subscription < std_msgs::msg::Float64 > ::SharedPtr yaw_sub_;
     rclcpp::Subscription < geometry_msgs::msg::PoseWithCovarianceStamped > ::SharedPtr
     initial_pose_sub_;
     rclcpp::Publisher < geometry_msgs::msg::PoseArray > ::SharedPtr particle_pub_;
@@ -107,11 +105,9 @@ private:
     double total_update_measurement_sum_sq_us_ {0.0};
     std::deque < double > total_update_measurements_us_;
     bool have_last_odom_ {false};
-    bool have_external_yaw_ {false};
     double init_x_ {0.0};
     double init_y_ {0.0};
     double init_t_ {0.0};
-    double last_external_yaw_ {0.0};
     rclcpp::Time last_external_yaw_time_;
 
     double initial_pose_x_ {0.0};

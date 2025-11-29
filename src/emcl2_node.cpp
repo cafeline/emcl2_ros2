@@ -6,7 +6,6 @@
 #include "emcl2/emcl2_node.h"
 
 #include <geometry_msgs/msg/transform_stamped.hpp>
-#include <std_msgs/msg/float64.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Transform.h>
@@ -66,7 +65,7 @@ void EMcl2Node::declareParameter()
   this->declare_parameter("sensor_roll", 0.0);
   this->declare_parameter("sensor_pitch", 0.0);
   this->declare_parameter("sensor_yaw", 0.0);
-  this->declare_parameter("external_yaw_topic", external_yaw_topic_);
+  this->declare_parameter("external_yaw_child_frame", external_yaw_child_frame_);
   this->declare_parameter("external_yaw_timeout", external_yaw_timeout_);
 
   this->declare_parameter("odom_fw_dev_per_fw", odom_noise_ff_);
@@ -101,7 +100,7 @@ void EMcl2Node::declareParameter()
   const double roll = this->get_parameter("sensor_roll").as_double();
   const double pitch = this->get_parameter("sensor_pitch").as_double();
   const double yaw = this->get_parameter("sensor_yaw").as_double();
-  external_yaw_topic_ = this->get_parameter("external_yaw_topic").as_string();
+  external_yaw_child_frame_ = this->get_parameter("external_yaw_child_frame").as_string();
   external_yaw_timeout_ = this->get_parameter("external_yaw_timeout").as_double();
   Eigen::AngleAxisd r_roll(roll, Eigen::Vector3d::UnitX());
   Eigen::AngleAxisd r_pitch(pitch, Eigen::Vector3d::UnitY());
@@ -123,10 +122,6 @@ void EMcl2Node::initCommunication()
   pointcloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
     pointcloud_topic_, rclcpp::SensorDataQoS().keep_last(1),
     std::bind(&EMcl2Node::pointCloudCallback, this, std::placeholders::_1));
-
-  yaw_sub_ = this->create_subscription<std_msgs::msg::Float64>(
-    external_yaw_topic_, rclcpp::SensorDataQoS().keep_last(5),
-    std::bind(&EMcl2Node::yawCallback, this, std::placeholders::_1));
 }
 
 void EMcl2Node::initTF()
@@ -355,12 +350,28 @@ bool EMcl2Node::updateWithOdometry()
   }
 
   geometry_msgs::msg::TransformStamped tf;
+  geometry_msgs::msg::TransformStamped yaw_tf;
   try {
     tf = tf_buffer_->lookupTransform(odom_frame_id_, base_frame_id_, tf2::TimePointZero);
   } catch (const tf2::TransformException & ex) {
     RCLCPP_WARN_THROTTLE(get_logger(), *this->get_clock(), 2000, "TF lookup failed: %s", ex.what());
     return false;
   }
+
+  try {
+    yaw_tf = tf_buffer_->lookupTransform(
+      odom_frame_id_, external_yaw_child_frame_, tf2::TimePointZero);
+  } catch (const tf2::TransformException & ex) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *this->get_clock(), 2000, "Yaw TF lookup failed: %s", ex.what());
+    return false;
+  }
+
+  const rclcpp::Time tf_time(yaw_tf.header.stamp);
+  const rclcpp::Time yaw_stamp = tf_time.nanoseconds() == 0 ? this->now() : tf_time;
+  const double yaw_measurement = extractYawFromTf(yaw_tf);
+  last_external_yaw_time_ = yaw_stamp;
+  yaw_manager_.updateMeasurement(yaw_measurement);
 
   if (!yaw_manager_.ready()) {
     RCLCPP_WARN_THROTTLE(
@@ -559,17 +570,6 @@ void EMcl2Node::publishOutputs(const rclcpp::Time & stamp)
 
   tf_msg.transform = tf2::toMsg(t_map_odom);
   tf_broadcaster_->sendTransform(tf_msg);
-}
-
-void EMcl2Node::yawCallback(const std_msgs::msg::Float64::SharedPtr msg)
-{
-  if (!msg) {
-    return;
-  }
-  last_external_yaw_ = msg->data;
-  last_external_yaw_time_ = this->now();
-  yaw_manager_.updateMeasurement(last_external_yaw_);
-  have_external_yaw_ = yaw_manager_.haveMeasurement();
 }
 
 }  // namespace emcl2

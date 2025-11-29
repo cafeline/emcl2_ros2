@@ -6,7 +6,7 @@
     base_frame_id: "base_link"
     footprint_frame_id: "base_footprint"
     pointcloud_topic: "/pointcloud/cut"
-    external_yaw_topic: "imu_yaw"
+    external_yaw_child_frame: "imu_heading"
     external_yaw_timeout: 1.0
     map_hdf5_path: "/home/ryo/ros2_ws/src/emcl2_ros2/maps/tsudanuma_voxelsize_01_compressed_map.h5"
     transform_tolerance: 0.2

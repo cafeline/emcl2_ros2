@@ -100,12 +100,12 @@ inline void write_matrix_int32(
   H5Sclose(space);
 }
 
-inline std::vector < uint8_t > pack_block_indices(
-  const std::vector < uint32_t > & indices,
+inline std::vector<uint8_t> pack_block_indices(
+  const std::vector<uint32_t> & indices,
   uint32_t bit_width)
 {
   const std::size_t total_bits = static_cast<std::size_t>(bit_width) * indices.size();
-  std::vector < uint8_t > packed((total_bits + 7U) / 8U, 0);
+  std::vector<uint8_t> packed((total_bits + 7U) / 8U, 0);
 
   for (std::size_t i = 0; i < indices.size(); ++i) {
     const uint32_t value = indices[i];

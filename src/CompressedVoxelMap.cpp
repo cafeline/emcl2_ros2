@@ -343,7 +343,7 @@ bool CompressedVoxelMap::isOccupied(double x, double y, double z) const
   if (voxel_size_ <= 0.0 || block_size_ <= 0 || block_indices_.empty() ||
     dictionary_patterns_.empty() || pattern_bytes_ == 0)
   {
-	  return false;
+    return false;
   }
 
   const Eigen::Vector3d rel(x - origin_.x(), y - origin_.y(), z - origin_.z());
@@ -379,7 +379,7 @@ bool CompressedVoxelMap::isOccupied(double x, double y, double z) const
     block_x >= block_dims_.x() || block_y >= block_dims_.y() ||
     block_z >= block_dims_.z())
   {
-	  return false;
+    return false;
   }
 
   const std::size_t ux = static_cast<std::size_t>(block_x);
@@ -389,13 +389,13 @@ bool CompressedVoxelMap::isOccupied(double x, double y, double z) const
   const std::size_t linear_index = ux + stride_y_ * uy + stride_z_ * uz;
 
   if (linear_index >= block_indices_.size()) {
-	  return false;
+    return false;
   }
 
   const std::uint32_t pattern_id = block_indices_[linear_index];
 
   if (pattern_id >= dictionary_size_) {
-	  return false;
+    return false;
   }
 
   const int64_t local_x = voxel_x - block_x * block_size_ll;
@@ -405,7 +405,7 @@ bool CompressedVoxelMap::isOccupied(double x, double y, double z) const
   if (local_x < 0 || local_y < 0 || local_z < 0 ||
     local_x >= block_size_ll || local_y >= block_size_ll || local_z >= block_size_ll)
   {
-	  return false;
+    return false;
   }
 
   const std::size_t lx = static_cast<std::size_t>(local_x);
@@ -419,7 +419,7 @@ bool CompressedVoxelMap::isOccupied(double x, double y, double z) const
   const std::uint8_t mask = static_cast<std::uint8_t>(1u << (bit_index & 7));
 
   if (byte_offset >= dictionary_patterns_.size()) {
-	  return false;
+    return false;
   }
 
   return (dictionary_patterns_[byte_offset] & mask) != 0;

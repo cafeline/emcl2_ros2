@@ -7,7 +7,7 @@
     odom_frame_id: "odom"
     base_frame_id: "base_link"
     footprint_frame_id: "base_footprint"
-    external_yaw_topic: "imu_yaw"
+    external_yaw_child_frame: "imu_heading"
     external_yaw_timeout: 1.0
     laser_min_range: 0.0
     laser_max_range: 100000000.0
