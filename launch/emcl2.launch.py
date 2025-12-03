@@ -60,6 +60,14 @@ def generate_launch_description():
 
 
     def launch_setup(context, *args, **kwargs):
+        def to_bool(value):
+            resolved = value
+            if isinstance(resolved, LaunchConfiguration):
+                resolved = context.perform_substitution(resolved)
+            if isinstance(resolved, str):
+                return resolved.lower() in ('1', 'true', 'yes', 'on')
+            return bool(resolved)
+
         def resolved_value(value):
             if isinstance(value, LaunchConfiguration):
                 return context.perform_substitution(value)
@@ -83,7 +91,7 @@ def generate_launch_description():
         ] = resolved_value(vq_map_file)
         merged_params.setdefault('/**', {}).setdefault('ros__parameters', {})[
             'use_rviz'
-        ] = resolved_value(use_rviz)
+        ] = to_bool(use_rviz)
 
         tmp = tempfile.NamedTemporaryFile(
             mode='w', delete=False, prefix='emcl2_nav_', suffix='.yaml'
