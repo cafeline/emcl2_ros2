@@ -18,8 +18,17 @@ def generate_launch_description():
     pkg_raspicat_nav = get_package_share_directory('raspicat_tvvf_navigation')
     pkg_vq_server = get_package_share_directory('vq_server')
     nav_params_path = os.path.join(pkg_emcl2, 'config', 'tsukuba.yaml')
+
+    with open(nav_params_path, 'r', encoding='utf-8') as f:
+        nav_params = yaml.safe_load(f)
+
+    default_use_rviz = (
+        'true' if nav_params.get('/**', {}).get('ros__parameters', {}).get('use_rviz', True)
+        else 'false'
+    )
+
     use_sim_time = LaunchConfiguration('use_sim_time')
-    rviz_enable = LaunchConfiguration('rviz')
+    use_rviz = LaunchConfiguration('use_rviz')
     rviz_config_file = LaunchConfiguration('rviz_config_file')
     map_hdf5_file = LaunchConfiguration('map_hdf5_file')
     regions_config_file = LaunchConfiguration('regions_config_file')
@@ -29,7 +38,7 @@ def generate_launch_description():
 
     declare_use_sim_time = DeclareLaunchArgument('use_sim_time', default_value='false')
 
-    declare_rviz = DeclareLaunchArgument('rviz', default_value='true')
+    declare_use_rviz = DeclareLaunchArgument('use_rviz', default_value=default_use_rviz)
 
     declare_rviz_config = DeclareLaunchArgument('rviz_config_file',
         default_value=os.path.join(pkg_emcl2, 'rviz2', 'emcl2.rviz'))
@@ -48,10 +57,6 @@ def generate_launch_description():
 
     declare_vq_map = DeclareLaunchArgument('vq_map_file',
         default_value=os.path.join(pkg_vq_server,'maps', 'tsukuba20251004_vram8gb_voxel05.h5'))
-
-
-    with open(nav_params_path, 'r', encoding='utf-8') as f:
-        nav_params = yaml.safe_load(f)
 
 
     def launch_setup(context, *args, **kwargs):
@@ -76,6 +81,9 @@ def generate_launch_description():
         merged_params.setdefault('vq_server', {}).setdefault('ros__parameters', {})[
             'map_file'
         ] = resolved_value(vq_map_file)
+        merged_params.setdefault('/**', {}).setdefault('ros__parameters', {})[
+            'use_rviz'
+        ] = resolved_value(use_rviz)
 
         tmp = tempfile.NamedTemporaryFile(
             mode='w', delete=False, prefix='emcl2_nav_', suffix='.yaml'
@@ -99,7 +107,8 @@ def generate_launch_description():
                         executable='vq_server',
                         name='vq_server',
                         parameters=[params_file],
-                        output='screen'),
+                        output='screen',
+                        condition=IfCondition(use_rviz)),
                     Node(
                         package='raspicat_tvvf_navigation',
                         executable='simple_map_server',
@@ -142,7 +151,7 @@ def generate_launch_description():
                         name='rviz2',
                         output='screen',
                         arguments=['-d', rviz_config_file],
-                        condition=IfCondition(rviz_enable)
+                        condition=IfCondition(use_rviz)
                     ),
                     Node(
                         package='imu_rpy_pose',
@@ -156,7 +165,7 @@ def generate_launch_description():
 
     ld = LaunchDescription()
     ld.add_action(declare_use_sim_time)
-    ld.add_action(declare_rviz)
+    ld.add_action(declare_use_rviz)
     ld.add_action(declare_rviz_config)
     ld.add_action(declare_map_hdf5)
     ld.add_action(declare_regions_config)
