@@ -27,59 +27,32 @@ def generate_launch_description():
     map_yaml_file = LaunchConfiguration('map_yaml_file')
     vq_map_file = LaunchConfiguration('vq_map_file')
 
-    declare_use_sim_time = DeclareLaunchArgument(
-        'use_sim_time',
-        default_value='false',
-        description='Use simulation time for all nodes')
-    declare_rviz = DeclareLaunchArgument(
-        'rviz',
-        default_value='true',
-        description='Launch RViz2 for visualization')
-    declare_rviz_config = DeclareLaunchArgument(
-        'rviz_config_file',
-        default_value=os.path.join(
-            pkg_emcl2,
-            'rviz2',
-            'emcl2.rviz'),
-        description='RViz configuration file path')
-    declare_map_hdf5 = DeclareLaunchArgument(
-        'map_hdf5_file',
-        default_value=os.path.join(
-            pkg_emcl2,
-            'maps',
-            'tsukuba20251004_vram8gb.h5'),
-        description='HDF5 map used by emcl2 localization')
-    declare_regions_config = DeclareLaunchArgument(
-        'regions_config_file',
-        default_value=os.path.join(
-            pkg_pointcloud2,
-            'config',
-            'tsukuba_regions.yaml'),
-        description='Pointcloud2 cutter regions configuration')
-    declare_waypoint_csv = DeclareLaunchArgument(
-        'waypoint_csv_file',
-        default_value=os.path.join(
-            pkg_raspicat_nav,
-            'maps',
-            'tsukuba_WP_1.csv'),
-        description='Waypoint CSV for waypoint follower')
-    declare_map_yaml = DeclareLaunchArgument(
-        'map_yaml_file',
-        default_value=os.path.join(
-            pkg_raspicat_nav,
-            'maps',
-            'navigation_map_2_edge_stopline.yaml'),
-        description='Occupancy grid YAML for simple_map_server')
-    declare_vq_map = DeclareLaunchArgument(
-        'vq_map_file',
-        default_value=os.path.join(
-            pkg_vq_server,
-            'maps',
-            'tsukuba20251004_vram8gb_voxel05.h5'),
-        description='HDF5 map file for vq_server')
+    declare_use_sim_time = DeclareLaunchArgument('use_sim_time', default_value='false')
+
+    declare_rviz = DeclareLaunchArgument('rviz', default_value='true')
+
+    declare_rviz_config = DeclareLaunchArgument('rviz_config_file',
+        default_value=os.path.join(pkg_emcl2, 'rviz2', 'emcl2.rviz'))
+
+    declare_map_hdf5 = DeclareLaunchArgument('map_hdf5_file',
+        default_value=os.path.join(pkg_emcl2, 'maps', 'tsukuba20251004_vram8gb.h5'))
+
+    declare_regions_config = DeclareLaunchArgument('regions_config_file',
+        default_value=os.path.join(pkg_pointcloud2, 'config', 'tsukuba_regions.yaml'))
+
+    declare_waypoint_csv = DeclareLaunchArgument('waypoint_csv_file',
+        default_value=os.path.join(pkg_raspicat_nav, 'maps', 'tsukuba_WP_1.csv'))
+
+    declare_map_yaml = DeclareLaunchArgument('map_yaml_file',
+        default_value=os.path.join(pkg_raspicat_nav, 'maps', 'navigation_map_2_edge_stopline.yaml'))
+
+    declare_vq_map = DeclareLaunchArgument('vq_map_file',
+        default_value=os.path.join(pkg_vq_server,'maps', 'tsukuba20251004_vram8gb_voxel05.h5'))
+
 
     with open(nav_params_path, 'r', encoding='utf-8') as f:
         nav_params = yaml.safe_load(f)
+
 
     def launch_setup(context, *args, **kwargs):
         def resolved_value(value):
@@ -115,12 +88,6 @@ def generate_launch_description():
             GroupAction(
                 actions=[
                     SetParameter('use_sim_time', resolved_value(use_sim_time)),
-                    Node(
-                        package='tf2_ros',
-                        executable='static_transform_publisher',
-                        name='livox_static_tf',
-                        arguments=['0', '0', '0', '0', '0', '0', 'base_link', 'livox_frame'],
-                        output='screen'),
                     Node(
                         package='pointcloud2_cutter',
                         executable='pointcloud2_cutter_node',

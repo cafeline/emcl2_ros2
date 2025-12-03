@@ -1,6 +1,6 @@
 /**:
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: true
 
 emcl2:
   ros__parameters:
@@ -8,7 +8,6 @@ emcl2:
     odom_frame_id: "odom"
     base_frame_id: "base_link"
     pointcloud_topic: "/pointcloud/cut"
-    map_hdf5_path: "/home/user/navigation_ws/install/share/emcl2/maps/tsukuba20251004_vram8gb.h5"
     transform_tolerance: 0.2
     odom_straight_only: true
     odom_freq: 10
@@ -70,7 +69,6 @@ pointcloud2_cutter:
     default_laser_height_min: 2.0
     default_laser_height_max: 50.0
     max_filtered_points: 3000
-    regions_config_path: "/home/user/navigation_ws/install/share/pointcloud2_cutter/config/tsukuba_regions.yaml"
 
 obstacle_tracker:
   ros__parameters:
@@ -130,7 +128,6 @@ velocity_smoother:
 
 waypoint_follower_node:
   ros__parameters:
-    waypoint_csv_path: "/home/user/navigation_ws/install/share/raspicat_tvvf_navigation/maps/tsukuba_WP_1.csv"
     position_tolerance: 6.0
     orientation_tolerance: 3.14
     max_retry_count: 3  # 1ウェイポイントにつき再挑戦する最大回数
@@ -141,13 +138,8 @@ waypoint_follower_node:
     global_frame: "map"  # ウェイポイントを表現するグローバルTFフレーム
     robot_base_frame: "base_link"  # ロボットベースのTFフレーム名
 
-map_server:
-  ros__parameters:
-    map_yaml_path: "/home/user/navigation_ws/install/share/raspicat_tvvf_navigation/maps/navigation_map_2_edge_stopline.yaml"
-
 vq_server:
   ros__parameters:
     frame_id: "map"
     marker_topic: "compressed_map_markers"
     marker_color_rgba: [0.1, 0.8, 0.4, 0.30]
-    map_file: "/home/user/navigation_ws/install/share/vq_server/maps/tsukuba20251004_vram8gb_voxel05.h5"
