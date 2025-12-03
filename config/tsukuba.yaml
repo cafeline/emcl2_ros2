@@ -1,9 +1,6 @@
-# ros2 param set /tvvf_vo_c_node repulsive_strength 0.4
-# ros2 param set /tvvf_vo_c_node repulsive_influence_range 1.0
-
 /**:
   ros__parameters:
-    use_sim_time: true
+    use_sim_time: false
 
 emcl2:
   ros__parameters:
@@ -70,10 +67,10 @@ pointcloud2_cutter:
     scan_angle_increment: 0.005
     scan_range_min: 0.05
     scan_range_max: 10.0
-    default_laser_height_min: 2.0
-    default_laser_height_max: 50.0
+    default_laser_height_min: 0.0
+    default_laser_height_max: 1.5
     max_filtered_points: 3000
-    regions_config_path: "/home/user/navigation_ws/install/share/pointcloud2_cutter/config/tsukuba_regions.yaml"
+    regions_config_path: "/home/user/navigation_ws/install/share/pointcloud2_cutter/config/19f.yaml"
 
 obstacle_tracker:
   ros__parameters:
@@ -86,25 +83,35 @@ obstacle_tracker:
     range_jump_min: 0.05
     min_cluster_points: 2
     range_gap_abs: 0.2
+    mask_topic: "/obstacle_mask"
+    mask_resolution: 0.1
+    mask_inflation_radius: 0.3
 
 tvvf_vo_c_node:
   ros__parameters:
+    control_loop_rate: 10.0  # [Hz]
     vector_field_path_width: 4.0 # パス幅 [m]
     max_linear_velocity: 0.5  # 最大並進速度[m/s]
-    max_angular_velocity: 0.4  # 最大角速度[rad/s]
+    max_angular_velocity: 0.6  # 最大角速度[rad/s]
     robot_radius: 0.24  # ロボット半径[m]
     base_frame: "base_link"  # ロボットベースフレーム名
     global_frame: "map"  # グローバル座標系
-    goal_tolerance: 0.5  # 目標位置許容誤差[m]
-    repulsive_strength: 1.6  # 斥力の強さ
-    repulsive_influence_range: 1.5  # 斥力の影響範囲[m]
-    enable_global_repulsion: false  # グローバル場への斥力ブレンドを有効化
-    vector_field_publish_interval: 2.5  # ベクトル場のパブリッシュ間隔[s]
-    map_repulsion_enabled: true  # OccupancyGridを斥力に利用
-    map_repulsion_max_distance: 6.0  # ロボット周囲のみマーカー化する距離[m]
-    map_repulsion_sampling_step: 0.5  # セルサンプリング間隔[m]
-    map_repulsion_recompute_distance: 2.0  # ロボット移動で再計算する距離[m]
-    map_repulsion_occupancy_threshold: 50  # 占有セル判定閾値
+    goal_tolerance: 0.3  # 目標位置許容誤差[m]（waypoint_followerのposition_tolerance=3.0より小さく設定）
+    orientation_tolerance: 0.4 # 目標進行方向と機体の向きの差がこの角度を超えると回転優先
+    turning_linear_scale: 0.3
+    turning_angular_gain: 2.0
+    tracking_angular_gain: 1.0
+    costmap_alpha: 1.0  # コストマップブレンド係数
+    costmap_min_speed: 0.3  # コストが高いときの最低速度[m/s]
+    costmap_max_speed: 0.5  # コストが低いときの最大速度[m/s]
+    costmap_clearance_epsilon: 0.1  # コストに対する速度の影響度合い。小さくしすぎると急減速[m]
+    costmap_max_clearance: 2.0  # それ以上離れても速度が頭打ちになる距離[m]
+    optimizer_goal_weight: 1.0  # ゴール到達重み
+    optimizer_smooth_weight: 4.0  # 速度平滑化重み
+    optimizer_max_linear_acceleration: 0.5  # 最大並進加速度[m/s^2]
+    obstacle_mask_topic: "/obstacle_mask"
+    occupancy_clear_radius: 0.5  # 足元クリア範囲[m]（マスク/静的地図ともに適用）
+    costmap_resolution: 0.1
 
 velocity_smoother:
   ros__parameters:
@@ -124,7 +131,7 @@ velocity_smoother:
 waypoint_follower_node:
   ros__parameters:
     waypoint_csv_path: "/home/user/navigation_ws/install/share/raspicat_tvvf_navigation/maps/tsukuba_WP_1.csv"
-    position_tolerance: 4.5
+    position_tolerance: 6.0
     orientation_tolerance: 3.14
     max_retry_count: 3  # 1ウェイポイントにつき再挑戦する最大回数
     goal_timeout: 30.0  # 各ウェイポイントで待機する最大時間[s]
@@ -133,7 +140,6 @@ waypoint_follower_node:
     loop_navigation: false  # 最終ウェイポイント到達後に再び先頭へ戻るか
     global_frame: "map"  # ウェイポイントを表現するグローバルTFフレーム
     robot_base_frame: "base_link"  # ロボットベースのTFフレーム名
-    use_sim_time: true  # シミュレーション時間を使用するかどうか
 
 map_server:
   ros__parameters:
