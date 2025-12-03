@@ -67,10 +67,10 @@ pointcloud2_cutter:
     scan_angle_increment: 0.005
     scan_range_min: 0.05
     scan_range_max: 10.0
-    default_laser_height_min: 0.0
-    default_laser_height_max: 1.5
+    default_laser_height_min: 2.0
+    default_laser_height_max: 50.0
     max_filtered_points: 3000
-    regions_config_path: "/home/user/navigation_ws/install/share/pointcloud2_cutter/config/19f.yaml"
+    regions_config_path: "/home/user/navigation_ws/install/share/pointcloud2_cutter/config/tsukuba_regions.yaml"
 
 obstacle_tracker:
   ros__parameters:
