@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     use_sim_time: true
-    use_rviz: false
+    use_rviz: true
 
 emcl2:
   ros__parameters:
@@ -95,9 +95,9 @@ tvvf_vo_c_node:
     robot_radius: 0.24  # ロボット半径[m]
     base_frame: "base_link"  # ロボットベースフレーム名
     global_frame: "map"  # グローバル座標系
-    goal_tolerance: 0.3  # 目標位置許容誤差[m]（waypoint_followerのposition_tolerance=3.0より小さく設定）
+    goal_tolerance: 0.4  # 目標位置許容誤差[m]（waypoint_followerのposition_tolerance=3.0より小さく設定）
     orientation_tolerance: 0.4 # 目標進行方向と機体の向きの差がこの角度を超えると回転優先
-    turning_linear_scale: 0.3
+    turning_linear_speed_mps: 0.15 # 最小並進速度[ms]
     turning_angular_gain: 2.0
     tracking_angular_gain: 1.0
     costmap_alpha: 1.0  # コストマップブレンド係数
@@ -109,8 +109,9 @@ tvvf_vo_c_node:
     optimizer_smooth_weight: 4.0  # 速度平滑化重み
     optimizer_max_linear_acceleration: 0.5  # 最大並進加速度[m/s^2]
     obstacle_mask_topic: "/obstacle_mask"
-    occupancy_clear_radius: 0.5  # 足元クリア範囲[m]（マスク/静的地図ともに適用）
-    costmap_resolution: 0.1
+    occupancy_clear_radius: 0.3  # 足元クリア範囲[m]（マスク/静的地図ともに適用）
+    costmap_resolution: 0.2
+
 
 velocity_smoother:
   ros__parameters:
@@ -118,7 +119,7 @@ velocity_smoother:
     command_timeout: 0.5
     max_linear_speed: 0.5
     max_angular_speed: 0.4
-    publish_frequency: 30.0
+    publish_frequency: 10.0
     base_frame: "base_link"
     raw_cmd_topic: "cmd_vel_raw"
     filtered_cmd_topic: "cmd_vel"
@@ -129,7 +130,7 @@ velocity_smoother:
 
 waypoint_follower_node:
   ros__parameters:
-    position_tolerance: 6.0
+    position_tolerance: 0.4
     orientation_tolerance: 3.14
     max_retry_count: 3  # 1ウェイポイントにつき再挑戦する最大回数
     goal_timeout: 30.0  # 各ウェイポイントで待機する最大時間[s]
