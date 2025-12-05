@@ -56,7 +56,7 @@ def generate_launch_description():
         default_value=os.path.join(pkg_raspicat_nav, 'maps', 'navigation_map.yaml'))
 
     declare_vq_map = DeclareLaunchArgument('vq_map_file',
-        default_value=os.path.join(pkg_vq_server,'maps', 'tsukuba_adjusted_float_view.h5'))
+        default_value=os.path.join(pkg_vq_server,'maps', 'tsukuba_adjusted_fusion_view.h5'))
 
 
     def launch_setup(context, *args, **kwargs):

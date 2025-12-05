@@ -1,6 +1,6 @@
 /**:
   ros__parameters:
-    use_sim_time: false
+    use_sim_time: true
     use_rviz: true
 
 emcl2:
@@ -27,7 +27,7 @@ emcl2:
     odom_fw_dev_per_fw: 0.19
     odom_fw_dev_per_rot: 0.0001
     odom_rot_dev_per_fw: 0.13
-    odom_rot_dev_per_rot: 0.1
+    odom_rot_dev_per_rot: 0.2
     external_yaw_child_frame: "imu_heading"
     external_yaw_timeout: 1.0
 
@@ -105,6 +105,7 @@ tvvf_vo_c_node:
     costmap_max_speed: 0.5  # コストが低いときの最大速度[m/s]
     costmap_clearance_epsilon: 0.1  # コストに対する速度の影響度合い。小さくしすぎると急減速[m]
     costmap_max_clearance: 2.0  # それ以上離れても速度が頭打ちになる距離[m]
+    costmap_escape_speed_min: 0.1  # スタック防止の足元特例速度[m/s]
     optimizer_goal_weight: 1.0  # ゴール到達重み
     optimizer_smooth_weight: 4.0  # 速度平滑化重み
     optimizer_max_linear_acceleration: 0.5  # 最大並進加速度[m/s^2]
@@ -130,7 +131,7 @@ velocity_smoother:
 
 waypoint_follower_node:
   ros__parameters:
-    position_tolerance: 0.4
+    position_tolerance: 6.4
     orientation_tolerance: 3.14
     max_retry_count: 3  # 1ウェイポイントにつき再挑戦する最大回数
     goal_timeout: 30.0  # 各ウェイポイントで待機する最大時間[s]
