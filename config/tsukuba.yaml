@@ -1,6 +1,6 @@
 /**:
   ros__parameters:
-    use_sim_time: true
+    use_sim_time: false
     use_rviz: true
 
 emcl2:
@@ -13,9 +13,9 @@ emcl2:
     odom_straight_only: true
     odom_freq: 10
     num_particles: 1000
-    initial_pose_x: 32.43
-    initial_pose_y: 39.85
-    initial_pose_yaw: 1.82
+    initial_pose_x: 8.5
+    initial_pose_y: -4.5
+    initial_pose_yaw: 0.0
     initial_std_xy: 0.5
     initial_std_yaw: 0.5
     sensor_offset_x: 0.0
@@ -27,7 +27,7 @@ emcl2:
     odom_fw_dev_per_fw: 0.19
     odom_fw_dev_per_rot: 0.0001
     odom_rot_dev_per_fw: 0.13
-    odom_rot_dev_per_rot: 0.2
+    odom_rot_dev_per_rot: 0.1
     external_yaw_child_frame: "imu_heading"
     external_yaw_timeout: 1.0
 
@@ -60,9 +60,9 @@ pointcloud2_cutter:
     output_scan_topic: "scan"
     scan_height_min: -0.15
     scan_height_max: 0.5
-    scan_angle_min: -2.0
+    scan_angle_min: -1.5
     # scan_angle_min: -3.141592653589793
-    scan_angle_max: 2.0
+    scan_angle_max: 1.5
     # scan_angle_max: 3.141592653589793
     scan_angle_increment: 0.005
     scan_range_min: 0.05
