@@ -24,7 +24,8 @@
   <depend>tf2_geometry_msgs</depend>
   <depend>visualization_msgs</depend>
   <depend>std_srvs</depend>
-  <depend>Eigen3</depend>
+  <!-- <depend>Eigen3</depend> -->
+  <depend>eigen</depend>
   <depend>hdf5</depend>
   <build_depend>eigen3_cmake_module</build_depend>
   <exec_depend>obstacle_tracker</exec_depend>
