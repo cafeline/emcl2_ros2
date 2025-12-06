@@ -44,7 +44,7 @@ def generate_launch_description():
         default_value=os.path.join(pkg_emcl2, 'rviz2', 'emcl2.rviz'))
 
     declare_map_hdf5 = DeclareLaunchArgument('map_hdf5_file',
-        default_value=os.path.join(pkg_emcl2, 'maps', 'tsukuba_adjusted_fusion_12061418_cityhall_-1.h5'))
+        default_value=os.path.join(pkg_emcl2, 'maps', 'tsukuba_adjusted_fusion_12062317_cityhall_-1_station_-4_part2.h5'))
 
     declare_regions_config = DeclareLaunchArgument('regions_config_file',
         default_value=os.path.join(pkg_pointcloud2, 'config', 'tsukuba_regions.yaml'))
@@ -56,7 +56,7 @@ def generate_launch_description():
         default_value=os.path.join(pkg_raspicat_nav, 'maps', 'navigation_map.yaml'))
 
     declare_vq_map = DeclareLaunchArgument('vq_map_file',
-        default_value=os.path.join(pkg_vq_server,'maps', 'tsukuba_adjusted_fusion_cityhall_-1_view.h5'))
+        default_value=os.path.join(pkg_vq_server,'maps', 'tsukuba_adjusted_fusion_12062317_cityhall_-1_station_-4_part2_view.h5'))
 
 
     def launch_setup(context, *args, **kwargs):
