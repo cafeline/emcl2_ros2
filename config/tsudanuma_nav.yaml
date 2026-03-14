@@ -120,7 +120,7 @@ tvvf_vo_c_node:
 
 waypoint_follower_node:
   ros__parameters:
-    waypoint_csv_path: "/home/ryo/ros2_ws/src/raspicat_tvvf_navigation/maps/tsudanuma_WP.csv"
+    waypoint_csv_path: "/home/ryo/ros2_ws/src/waypoint_follower/maps/tsudanuma_WP.csv"
     position_tolerance: 0.5
     orientation_tolerance: 3.14
     max_retry_count: 3
