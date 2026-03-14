@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     use_sim_time: false
-    use_rviz: false
+    use_rviz: true
 
 emcl2:
   ros__parameters:
@@ -12,7 +12,7 @@ emcl2:
     transform_tolerance: 0.2
     odom_straight_only: true
     odom_freq: 10
-    num_particles: 1000
+    num_particles: 2000
     initial_pose_x: 10.5
     initial_pose_y: 1.6
     # initial_pose_x: 8.5 # right
@@ -71,7 +71,7 @@ pointcloud2_cutter:
     scan_range_max: 8.0
     default_laser_height_min: 2.0
     default_laser_height_max: 50.0
-    max_filtered_points: 3000
+    max_filtered_points: 5000
 
 obstacle_tracker:
   ros__parameters:
@@ -90,7 +90,7 @@ obstacle_tracker:
 
 tvvf_vo_c_node:
   ros__parameters:
-    control_loop_rate: 5.0  # [Hz]
+    control_loop_rate: 10.0  # [Hz]
     vector_field_path_width: 4.0 # パス幅 [m]
     max_linear_velocity: 0.5  # 最大並進速度[m/s]
     max_angular_velocity: 0.6  # 最大角速度[rad/s]
@@ -113,7 +113,7 @@ tvvf_vo_c_node:
     optimizer_max_linear_acceleration: 0.3  # 最大並進加速度[m/s^2]
     obstacle_mask_topic: "/obstacle_mask"
     occupancy_clear_radius: 0.3  # 足元クリア範囲[m]（マスク/静的地図ともに適用）
-    costmap_resolution: 0.2
+    costmap_resolution: 0.14
 
 
 velocity_smoother:
@@ -133,12 +133,12 @@ velocity_smoother:
 
 waypoint_follower_node:
   ros__parameters:
-    position_tolerance_strict: 3.3  # meters　半径
-    orientation_tolerance_strict: 1.17  # radians(20deg)
-    position_tolerance_loose: 4.0  # meters
+    position_tolerance_strict: 0.3  # meters　半径
+    orientation_tolerance_strict: 0.17  # radians(20deg)
+    position_tolerance_loose: 5.0  # meters
     orientation_tolerance_loose: 3.14  # radians
     max_retry_count: 3  # 1ウェイポイントにつき再挑戦する最大回数
-    goal_timeout: 30.0  # 各ウェイポイントで待機する最大時間[s]
+    goal_timeout: 3000.0  # 各ウェイポイントで待機する最大時間[s]
     auto_start: true  # ノード起動直後に自動で巡航を開始するフラグ
     enable_skip_on_timeout: true  # タイムアウト発生時に該当ウェイポイントをスキップするか
     loop_navigation: false  # 最終ウェイポイント到達後に再び先頭へ戻るか
