@@ -92,14 +92,14 @@ tvvf_vo_c_node:
   ros__parameters:
     control_loop_rate: 10.0  # [Hz]
     vector_field_path_width: 4.0 # パス幅 [m]
-    max_linear_velocity: 0.5  # 最大並進速度[m/s]
+    max_linear_velocity: 1.0  # 最大並進速度[m/s]
     max_angular_velocity: 0.6  # 最大角速度[rad/s]
     robot_radius: 0.24  # ロボット半径[m]
     base_frame: "base_link"  # ロボットベースフレーム名
     global_frame: "map"  # グローバル座標系
     goal_tolerance: 0.4  # 目標位置許容誤差[m]（waypoint_followerのposition_tolerance=3.0より小さく設定）
     orientation_tolerance: 0.4 # 目標進行方向と機体の向きの差がこの角度を超えると回転優先
-    turning_linear_speed_mps: 0.4 # 最小並進速度[ms]
+    turning_linear_speed_mps: 0.7 # 最小並進速度[ms]
     turning_angular_gain: 2.0
     tracking_angular_gain: 1.0
     costmap_alpha: 1.0  # コストマップブレンド係数
@@ -120,7 +120,7 @@ velocity_smoother:
   ros__parameters:
     time_constant: 0.2
     command_timeout: 0.5
-    max_linear_speed: 0.5
+    max_linear_speed: 1.0
     max_angular_speed: 0.4
     publish_frequency: 10.0
     base_frame: "base_link"

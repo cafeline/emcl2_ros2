@@ -44,16 +44,16 @@ def generate_launch_description():
         default_value=os.path.join(pkg_emcl2, 'rviz2', 'emcl2.rviz'))
 
     declare_map_hdf5 = DeclareLaunchArgument('map_hdf5_file',
-        default_value=os.path.join(pkg_emcl2, 'maps', 'tsukuba_adjusted_fusion_12062317_cityhall_-1_station_-4_part2.h5'))
+        default_value=os.path.join(pkg_emcl2, 'maps', 'tsudanuma_voxelsize_01_compressed_map.h5'))
 
     declare_regions_config = DeclareLaunchArgument('regions_config_file',
         default_value=os.path.join(pkg_pointcloud2, 'config', 'tsukuba_regions.yaml'))
 
     declare_waypoint_csv = DeclareLaunchArgument('waypoint_csv_file',
-        default_value=os.path.join(pkg_raspicat_nav, 'maps', 'tsukuba_WP.csv'))
+        default_value=os.path.join(pkg_raspicat_nav, 'maps', 'robosym_WP.csv'))
 
     declare_map_yaml = DeclareLaunchArgument('map_yaml_file',
-        default_value=os.path.join(pkg_raspicat_nav, 'maps', 'navigation_map.yaml'))
+        default_value=os.path.join(pkg_raspicat_nav, 'maps', 'nav.yaml'))
 
     declare_vq_map = DeclareLaunchArgument('vq_map_file',
         default_value=os.path.join(pkg_vq_server,'maps', 'tsukuba_adjusted_fusion_12062317_cityhall_-1_station_-4_part2_view.h5'))
