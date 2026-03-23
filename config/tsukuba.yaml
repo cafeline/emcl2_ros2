@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
-    use_sim_time: false
-    use_rviz: false
+    use_sim_time: true
+    use_rviz: true
 
 emcl2:
   ros__parameters:
